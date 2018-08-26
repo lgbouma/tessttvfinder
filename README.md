@@ -1,8 +1,9 @@
 Hot Jupiters spiral into their host stars
 ----------
 
-but it's not clear whether the timescale is like years, or centuries.
-If we find inspiraling hot Jupiters with TESS, we might be able to check.
+but it's not clear whether the effect will be observable in years, or
+centuries.  If we see inspiraling hot Jupiters with TESS, we'll have a better
+idea.
 
 Relevant resources
 ----------

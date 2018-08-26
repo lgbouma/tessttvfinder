@@ -1,3 +1,4 @@
 data/*
-results/*
+results/*csv
+results/*txt
 *__pycache__*
