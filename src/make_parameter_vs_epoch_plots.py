@@ -197,6 +197,23 @@ def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
     print('made {:s}'.format(savname))
 
 
+def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
+    '''
+    tmid = period*epoch + t0.
+
+    this function returns APPROXIMATE epochs that are NOT FIT FOR PUBLICATION.
+    they are forced INT-type epochs.
+
+    they are therefore fit for a rough assessment on an O-C diagram of orbital
+    decay.
+    '''
+
+    t0 = np.nanmedian(tmid)
+
+    epoch = (tmid - t0)/init_period
+
+    return np.round(epoch,0).astype(np.int)
+
 def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
                                            init_t0, overwrite=False,
                                            savname=None):
@@ -220,26 +237,24 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
 
     f,ax = plt.subplots(figsize=(8,6))
 
-    xvals = arr(df['epoch'])
     # fit a straight line (t vs. E) to all the times. then subtract the
     # best-fitting line from the data.
-    tmid_HJD = arr(df['t0_BJD_TDB'])
-    err_tmid_HJD = arr(df['err_t0'])
+    tmid = arr(df['t0_BJD_TDB'])
+    err_tmid = arr(df['err_t0'])
+    epoch = get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
 
-    sel = np.isfinite(err_tmid_HJD)
-    print('{:d} transits with claimed err_tmid_HJD < 1 minute'.
-          format(len(err_tmid_HJD[err_tmid_HJD*24*60 > 1.])))
-    # sel &= err_tmid_HJD*24*60 > 1.
+    sel = np.isfinite(err_tmid) & np.isfinite(tmid)
+
+    print('{:d} transits with claimed err_tmid < 1 minute'.
+          format(len(err_tmid[err_tmid*24*60 > 1.])))
+    # sel &= err_tmid*24*60 > 1.
     # NOTE: if you claim sub-minute transit time measurements, i don't
     # believe it....
 
-    xvals = arr(df['epoch'])[sel]
+    xvals = epoch[sel]
     xdata = xvals
-    ydata = tmid_HJD[sel]
-    sigma = err_tmid_HJD[sel]
-
-    if repr(init_t0)[:2] == '24' and repr(tmid_HJD[0])[:2] != '24':
-        init_t0 -= 2400000
+    ydata = tmid[sel]
+    sigma = err_tmid[sel]
 
     from scipy.optimize import curve_fit
     def f_model(xdata, m, b):
@@ -253,10 +268,10 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     assert abs(lsfit_period - init_period) < 1e-4, (
         'least squares period should be close to given period' )
 
-    calc_tmids = lsfit_period * arr(df['epoch'])[sel] + lsfit_t0
+    calc_tmids = lsfit_period * epoch[sel] + lsfit_t0
 
     # we can now plot "O-C"
-    yvals = tmid_HJD[sel] - calc_tmids
+    yvals = tmid[sel] - calc_tmids
 
     ymin, ymax = np.nanmean(yvals)-3*np.nanstd(yvals), \
                  np.nanmean(yvals)+3*np.nanstd(yvals)
@@ -324,8 +339,10 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
         # zero line
         ax.hlines(0, xmin, xmax, alpha=0.3, zorder=-1, lw=0.5)
 
-    ax.set_ylabel(ylabel, fontsize='small')
-    ax.set_xlabel('Epoch Number ({:d} records; times are BJD TDB)'.format(len(df)))
+    ax.set_ylabel(ylabel, fontsize='x-small')
+    ax.set_xlabel('Epoch Number '
+        '({:d} records; tmids are BJD TDB; TESS windows +/-1 day)'.format(
+        len(df)), fontsize='x-small')
     ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
 
@@ -339,8 +356,6 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     f.tight_layout()
     f.savefig(savname)
     print('made {:s}'.format(savname))
-
-
 
 
 def get_ETD_params(fglob='../data/*_ETD.txt'):
