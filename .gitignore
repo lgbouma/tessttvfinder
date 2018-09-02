@@ -2,3 +2,4 @@ data/*
 results/*csv
 results/*txt
 *__pycache__*
+doc*
