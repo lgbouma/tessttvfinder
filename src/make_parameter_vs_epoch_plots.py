@@ -36,6 +36,9 @@ import os
 
 from parse import parse, search
 
+from ephemerides_utilities import get_ROUGH_epochs_given_midtime_and_period, \
+    get_half_epochs_given_occultation_times
+
 def arr(x):
     return np.array(x)
 
@@ -197,26 +200,8 @@ def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
     print('made {:s}'.format(savname))
 
 
-def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
-    '''
-    tmid = period*epoch + t0.
-
-    this function returns APPROXIMATE epochs that are NOT FIT FOR PUBLICATION.
-    they are forced INT-type epochs.
-
-    they are therefore fit for a rough assessment on an O-C diagram of orbital
-    decay.
-    '''
-
-    t0 = np.nanmedian(tmid)
-
-    epoch = (tmid - t0)/init_period
-
-    return np.round(epoch,0).astype(np.int)
-
 def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
-                                           init_t0, overwrite=False,
-                                           savname=None):
+                                           overwrite=False, savname=None):
     '''
     args:
         df -- made by get_ETD_params
@@ -241,7 +226,26 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     # best-fitting line from the data.
     tmid = arr(df['t0_BJD_TDB'])
     err_tmid = arr(df['err_t0'])
-    epoch = get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
+    epoch, init_t0 = get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
+
+    # include occultation time measurements in fitting for period and t0
+    try:
+        if np.any(arr(df['tsec_BJD_TDB'])):
+
+            tsec = arr(df['tsec_BJD_TDB'])
+            err_tsec = arr(df['err_tsec'])
+
+            sec_epochs = get_half_epochs_given_occultation_times(
+                tsec, init_period, init_t0)
+
+            f_sec_epochs = np.isfinite(sec_epochs)
+
+            tmid = np.concatenate((tmid, tsec[f_sec_epochs]))
+            err_tmid = np.concatenate((err_tmid, err_tsec[f_sec_epochs]))
+            epoch = np.concatenate((epoch, sec_epochs[f_sec_epochs]))
+
+    except KeyError:
+        pass
 
     sel = np.isfinite(err_tmid) & np.isfinite(tmid)
 
@@ -277,9 +281,7 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
                  np.nanmean(yvals)+3*np.nanstd(yvals)
 
     if yparam == 'O-C':
-        yerrkey = 'err_t0'
-        ylabel = 'O-C [d]'
-        yerrs = arr(df[yerrkey])[sel]
+        yerrs = sigma
 
     # data points
     dq = 1e3*sigma
@@ -339,7 +341,7 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
         # zero line
         ax.hlines(0, xmin, xmax, alpha=0.3, zorder=-1, lw=0.5)
 
-    ax.set_ylabel(ylabel, fontsize='x-small')
+    ax.set_ylabel('O-C [d]', fontsize='x-small')
     ax.set_xlabel('Epoch Number '
         '({:d} records; tmids are BJD TDB; TESS windows +/-1 day)'.format(
         len(df)), fontsize='x-small')
@@ -470,8 +472,8 @@ def make_manually_curated_OminusC_plots():
     ##############################################
     d = get_manual_params()
 
-    for df, fname, init_period, init_t0 in list(
-        zip(d['df'], d['fname'], d['init_period'], d['init_t0'])
+    for df, fname, init_period in list(
+        zip(d['df'], d['fname'], d['init_period'])
     ):
 
         yparam = 'O-C'
@@ -483,7 +485,7 @@ def make_manually_curated_OminusC_plots():
         )
 
         scatter_plot_parameter_vs_epoch_manual(df, yparam, fname, init_period,
-                                               init_t0, overwrite=True,
+                                               overwrite=True,
                                                savname=savname)
 
 if __name__ == '__main__':
