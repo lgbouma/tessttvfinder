@@ -292,8 +292,8 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
                 linewidth=0, fmt='s', ms=0, zorder=0, alpha=0.75)
     # text for epoch and planet name
     pl_name = datafile.split("/")[-1].split("_")[0]
-    ax.text(.96, .96, pl_name,
-            ha='right', va='top', transform=ax.transAxes, fontsize='small')
+    ax.text(.04, .04, pl_name,
+            ha='left', va='bottom', transform=ax.transAxes, fontsize='small')
 
     # make vertical lines to roughly show TESS observation window function for
     # all sectors that this planet is observed in
@@ -352,7 +352,7 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     for _dq in np.linspace(np.nanmin(dq), np.nanmax(dq), num=6):
         ax.scatter([],[], c='r', s=1/(_dq**2), label='{:.2E}'.format(_dq))
     ax.legend(scatterpoints=1, frameon=True, labelspacing=0,
-              title='err t0 (days)', loc='lower left', fontsize='xx-small')
+              title='err t0 (days)', loc='upper right', fontsize='xx-small')
 
 
     f.tight_layout()
