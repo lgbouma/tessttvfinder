@@ -16,7 +16,12 @@ def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
     decay.
     '''
 
-    t0 = np.nanmedian(tmid)
+    N_tmids = len(tmid)
+    # beware the median average
+    if N_tmids % 2 == 1:
+        t0 = np.nanmedian(tmid)
+    else:
+        t0 = tmid[int(N_tmids/2)]
 
     epoch = (tmid - t0)/init_period
 
@@ -45,7 +50,7 @@ def get_half_epochs_given_occultation_times(tsec, init_period, t0):
     # ensure the output array only has half-epoch secondary eclipse times.
     out_epochs = []
     for ix, er in enumerate(epoch_plushalf_rounded):
-        if not repr(er)[-1] == str(5):
+        if not repr(er)[-1] == str(5) and not repr(er)[-1] == str(0):
             out_epochs.append(np.nan)
         else:
             out_epochs.append(er)
