@@ -1,11 +1,8 @@
-Hot Jupiters spiral into their host stars
-----------
+Hot Jupiters spiral into their host stars, but it's not clear whether the tidal
+decay will be observable in years, or centuries.  If we see it with TESS, we'll
+have learned something.
 
-but it's not clear whether the effect will be observable in years, or
-centuries.  If we see inspiraling hot Jupiters with TESS, we'll have a better
-idea.
-
-Resources I've found useful
+relevant resources
 ----------
 
 * [Exoplanet Transit Database](http://var2.astro.cz/ETD/) (Czech Astronomical Society)
