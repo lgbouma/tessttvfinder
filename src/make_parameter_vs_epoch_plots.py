@@ -77,7 +77,7 @@ def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
 
         sel = np.isfinite(err_tmid_HJD)
         print('{:d} transits with claimed err_tmid_HJD < 1 minute'.
-              format(len(err_tmid_HJD[err_tmid_HJD*24*60 > 1.])))
+              format(len(err_tmid_HJD[err_tmid_HJD*24*60 < 1.])))
         # sel &= err_tmid_HJD*24*60 > 1.
         # NOTE: if you claim sub-minute transit time measurements, i don't
         # believe it....
@@ -269,8 +269,10 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     lsfit_period = popt[0]
     lsfit_t0 = popt[1]
 
-    assert abs(lsfit_period - init_period) < 1e-4, (
-        'least squares period should be close to given period' )
+    if not abs(lsfit_period - init_period) < 3e-4:
+        print('least squares period should be close to given period')
+        import IPython; IPython.embed()
+        raise AssertionError
 
     calc_tmids = lsfit_period * epoch[sel] + lsfit_t0
 
@@ -470,7 +472,7 @@ def make_manually_curated_OminusC_plots():
     ##############################################
     # make plots based on manually-curated times #
     ##############################################
-    d = get_manual_params()
+    d = get_manual_params(manual_glob='../data/*WASP-46*_manual.csv')
 
     for df, fname, init_period in list(
         zip(d['df'], d['fname'], d['init_period'])

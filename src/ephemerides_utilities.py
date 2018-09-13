@@ -1,3 +1,8 @@
+'''
+Functions here are named:
+    get_ROUGH_epochs_given_midtime_and_period
+    get_half_epochs_given_occultation_times
+'''
 import numpy as np
 
 def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
@@ -15,7 +20,11 @@ def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
 
     epoch = (tmid - t0)/init_period
 
-    return np.round(epoch,0).astype(np.int), t0
+    # do not convert numpy entries to ints, because np.nan is float type
+    int_epoch = np.round(epoch,0)
+
+    return int_epoch, t0
+
 
 def get_half_epochs_given_occultation_times(tsec, init_period, t0):
     '''
@@ -44,4 +53,3 @@ def get_half_epochs_given_occultation_times(tsec, init_period, t0):
     out_epochs = np.array(out_epochs)
 
     return out_epochs
-

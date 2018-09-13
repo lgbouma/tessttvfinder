@@ -1,6 +1,6 @@
 '''
 For good targets (things crossmatched with Southworth's main TEPCAT database),
-compile list of known transit times.
+compile list of discovery ephemerides.
 '''
 from __future__ import division, print_function
 
