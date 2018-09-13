@@ -269,7 +269,9 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     lsfit_period = popt[0]
     lsfit_t0 = popt[1]
 
-    if not abs(lsfit_period - init_period) < 3e-4:
+    if not abs(lsfit_period - init_period) < 1e-4:
+        print('least squares period is worryingly far from given period')
+    if not abs(lsfit_period - init_period) < 1e-3:
         print('least squares period should be close to given period')
         import IPython; IPython.embed()
         raise AssertionError
@@ -361,7 +363,7 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     f.savefig(savname, bbox_inches='tight')
     print('made {:s}'.format(savname))
     f.savefig(savname.replace('.pdf','.png'), dpi=300, bbox_inches='tight')
-    print('made {:s}'.format(savname))
+    print('made {:s}'.format(savname.replace('.pdf','.png')))
 
 
 def get_ETD_params(fglob='../data/*_ETD.txt'):
@@ -508,10 +510,11 @@ def make_manually_curated_OminusC_plots():
     ##############################################
     # make plots based on manually-curated times #
     ##############################################
-    d = get_manual_and_TESS_ttimes(
-        manual_glob='../data/*WASP-46*_manual.csv',
-        tesstimecsv='../data/231663901_measured_TESS_times_18_transits.csv'
-    )
+    manual_glob = '../data/*_manual.csv'#'../data/*WASP-46*_manual.csv'
+    tesstimecsv = None#'../data/231663901_measured_TESS_times_18_transits.csv'
+
+    d = get_manual_and_TESS_ttimes(manual_glob=manual_glob,
+                                   tesstimecsv=tesstimecsv)
 
     for df, fname, init_period in list(
         zip(d['df'], d['fname'], d['init_period'])
@@ -519,8 +522,12 @@ def make_manually_curated_OminusC_plots():
 
         yparam = 'O-C'
 
+        if tesstimecsv:
+            savdir = '../results/manual_plus_tess_O-C_vs_epoch/'
+        else:
+            savdir = '../results/manual_O-C_vs_epoch/'
         savname = (
-            '../results/' +
+            savdir +
             fname.split('/')[-1].split('.csv')[0]+"_"+
             yparam + "_vs_epoch.pdf"
         )
