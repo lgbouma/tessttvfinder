@@ -2,9 +2,11 @@
 '''
 usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
                                                 [--n_mcmc_steps N_MCMC_STEPS]
-                                                [--overwriteexistingsamples OVERWRITEEXISTINGSAMPLES]
+                                                [--nworkers NWORKERS]
                                                 [--mcmcprogressbar]
                                                 [--no-mcmcprogressbar]
+                                                [--overwritesamples]
+                                                [--no-overwritesamples]
                                                 [--spoc_rp SPOC_RP]
                                                 [--spoc_sma SPOC_SMA]
                                                 [--spoc_b SPOC_B]
@@ -20,10 +22,11 @@ optional arguments:
                         d}-111-s_llc.fits.gz
   --n_mcmc_steps N_MCMC_STEPS
                         steps to run in MCMC
-  --overwriteexistingsamples OVERWRITEEXISTINGSAMPLES
-                        overwrite existing mcmc samples
+  --nworkers NWORKERS   how many workers?
   --mcmcprogressbar
   --no-mcmcprogressbar
+  --overwritesamples
+  --no-overwritesamples
   --spoc_rp SPOC_RP     spoc rp/rstar
   --spoc_sma SPOC_SMA   spoc a/rstar
   --spoc_b SPOC_B       spoc impact param
