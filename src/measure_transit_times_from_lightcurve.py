@@ -375,14 +375,18 @@ if __name__ == '__main__':
         help=('steps to run in MCMC'))
     parser.add_argument('--nworkers', type=int, default=4,
         help=('how many workers?'))
-    parser.add_argument('--overwriteexistingsamples', type=bool,
-        default=False, help=('overwrite existing mcmc samples'))
 
     parser.add_argument('--mcmcprogressbar', dest='progressbar',
         action='store_true')
     parser.add_argument('--no-mcmcprogressbar', dest='progressbar',
         action='store_false')
     parser.set_defaults(progressbar=True)
+
+    parser.add_argument('--overwritesamples', dest='overwrite',
+        action='store_true')
+    parser.add_argument('--no-overwritesamples', dest='overwrite',
+        action='store_false')
+    parser.set_defaults(overwrite=False)
 
     parser.add_argument('--spoc_rp', type=float, default=None,
         help=('spoc rp/rstar'))
@@ -398,5 +402,5 @@ if __name__ == '__main__':
     measure_transit_times_from_lightcurve(
         args.ticid, args.n_mcmc_steps, spoc_rp=args.spoc_rp,
         spoc_t0=args.spoc_t0, spoc_sma=args.spoc_sma, spoc_b=args.spoc_b,
-        overwriteexistingsamples=args.overwriteexistingsamples,
+        overwriteexistingsamples=args.overwrite,
         mcmcprogressbar=args.progressbar,nworkers=args.nworkers)
