@@ -4,3 +4,5 @@ results/*txt
 *__pycache__*
 doc*
 *DS_Store*
+logs*
+results/lc_analysis/231*.png

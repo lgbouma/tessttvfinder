@@ -1,12 +1,40 @@
 # -*- coding: utf-8 -*-
 '''
+usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
+                                                [--n_mcmc_steps N_MCMC_STEPS]
+                                                [--overwriteexistingsamples OVERWRITEEXISTINGSAMPLES]
+                                                [--mcmcprogressbar]
+                                                [--no-mcmcprogressbar]
+                                                [--spoc_rp SPOC_RP]
+                                                [--spoc_sma SPOC_SMA]
+                                                [--spoc_b SPOC_B]
+                                                [--spoc_t0 SPOC_T0]
+
 Given a lightcurve with transits (e.g., alerted from TESS Science Office),
 measure the times that they fall at by fitting models.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --ticid TICID         integer TIC ID for object. Lightcurve assumed to be at
+                        ../data/tess_lightcurves/tess2018206045859-s0001-{tici
+                        d}-111-s_llc.fits.gz
+  --n_mcmc_steps N_MCMC_STEPS
+                        steps to run in MCMC
+  --overwriteexistingsamples OVERWRITEEXISTINGSAMPLES
+                        overwrite existing mcmc samples
+  --mcmcprogressbar
+  --no-mcmcprogressbar
+  --spoc_rp SPOC_RP     spoc rp/rstar
+  --spoc_sma SPOC_SMA   spoc a/rstar
+  --spoc_b SPOC_B       spoc impact param
+  --spoc_t0 SPOC_T0     spoc epoch
 '''
 from __future__ import division, print_function
 
 import os, argparse
 
+import matplotlib as mpl
+mpl.use('Agg')
 import numpy as np, matplotlib.pyplot as plt
 from astropy.io import fits
 from mast_utils import tic_single_object_crossmatch
@@ -155,7 +183,10 @@ def single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid):
 
 def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
                                           spoc_t0=None, spoc_sma=None,
-                                          spoc_b=None):
+                                          spoc_b=None,
+                                          overwriteexistingsamples=False,
+                                          mcmcprogressbar=False,
+                                          nworkers=4):
 
     ##########################################
     # detrending parameters. mingap: minimum gap to determine time group size.
@@ -278,7 +309,7 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
             if isinstance(spoc_b,float) and isinstance(spoc_sma, float):
                 # b = a/Rstar * cosi
                 cosi = spoc_b / spoc_sma
-                spoc_incl = np.degrees(np.arcos(cosi))
+                spoc_incl = np.degrees(np.arccos(cosi))
 
             spocparams = {'rp':spoc_rp,
                           't0':spoc_t0,
@@ -301,6 +332,10 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
             mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
             corner_savfile = fit_savdir + corner_plotname
             chain_savdir = '/Users/luke/local/emcee_chains/'
+            if not os.path.exists(chain_savdir):
+                chain_savdir = '/home/luke/local/emcee_chains/'
+                if not os.path.exists(chain_savdir):
+                    raise AssertionError('you need to save chains')
             samplesavpath = chain_savdir + sample_plotname
 
             print('beginning {:s}'.format(samplesavpath))
@@ -312,11 +347,14 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
                             trueparams=spocparams, magsarefluxes=True,
                             sigclip=10., plotfit=mandelagolfit_savfile,
                             plotcorner=corner_savfile,
-                            samplesavpath=samplesavpath, nworkers=8,
+                            samplesavpath=samplesavpath, nworkers=nworkers,
                             n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
-                            skipsampling=False, overwriteexistingsamples=False)
-        except:
-            print('transit {:d} failed, continue'.format(ix))
+                            skipsampling=False,
+                            overwriteexistingsamples=overwriteexistingsamples,
+                            mcmcprogressbar=mcmcprogressbar)
+        except Exception as e:
+            print(e)
+            print('transit {:d} failed, continue'.format(transit_ix))
             continue
 
 
@@ -325,33 +363,40 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=('Given a lightcurve with transits (e.g., alerted '
                      'from TESS Science Office), measure the times that they '
-                     'fall at by fitting models.')
-        )
+                     'fall at by fitting models.'))
 
-    parser.add_argument('-tic', '--ticid', type=int, default=None,
+    parser.add_argument('--ticid', type=int, default=None,
         help=('integer TIC ID for object. Lightcurve assumed to be at '
-              '../data/tess_lightcurves/tess2018206045859-s0001-{ticid}-111-s_llc.fits.gz'
-             )
-    )
+              '../data/tess_lightcurves/'
+              'tess2018206045859-s0001-{ticid}-111-s_llc.fits.gz'
+             ))
 
-    parser.add_argument('-rp', '--spoc_rp', type=float, default=None,
-        help=('spoc rp/rstar')
-    )
-    parser.add_argument('-sma', '--spoc_sma', type=float, default=None,
-        help=('spoc a/rstar')
-    )
-    parser.add_argument('-b', '--spoc_b', type=float, default=None,
-        help=('spoc impact param')
-    )
-    parser.add_argument('-t0', '--spoc_t0', type=float, default=None,
-        help=('spoc epoch')
-    )
-    parser.add_argument('-nmcmc', '--n_mcmc_steps', type=float, default=None,
-        help=('spoc epoch')
-    )
+    parser.add_argument('--n_mcmc_steps', type=int, default=None,
+        help=('steps to run in MCMC'))
+    parser.add_argument('--nworkers', type=int, default=4,
+        help=('how many workers?'))
+    parser.add_argument('--overwriteexistingsamples', type=bool,
+        default=False, help=('overwrite existing mcmc samples'))
+
+    parser.add_argument('--mcmcprogressbar', dest='progressbar',
+        action='store_true')
+    parser.add_argument('--no-mcmcprogressbar', dest='progressbar',
+        action='store_false')
+    parser.set_defaults(progressbar=True)
+
+    parser.add_argument('--spoc_rp', type=float, default=None,
+        help=('spoc rp/rstar'))
+    parser.add_argument('--spoc_sma', type=float, default=None,
+        help=('spoc a/rstar'))
+    parser.add_argument('--spoc_b', type=float, default=None,
+        help=('spoc impact param'))
+    parser.add_argument('--spoc_t0', type=float, default=None,
+        help=('spoc epoch'))
 
     args = parser.parse_args()
 
-    measure_transit_times_from_lightcurve(args.ticid, args.n_mcmc_steps,
-                                          args.spoc_rp, args.spoc_t0,
-                                          args.spoc_sma, args.spoc_b)
+    measure_transit_times_from_lightcurve(
+        args.ticid, args.n_mcmc_steps, spoc_rp=args.spoc_rp,
+        spoc_t0=args.spoc_t0, spoc_sma=args.spoc_sma, spoc_b=args.spoc_b,
+        overwriteexistingsamples=args.overwriteexistingsamples,
+        mcmcprogressbar=args.progressbar,nworkers=args.nworkers)
