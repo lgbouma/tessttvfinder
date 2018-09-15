@@ -330,80 +330,80 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
         zip(range(len(t_starts)), t_starts, t_ends)
     ):
 
-        #try:
-        sel = (time < t_end) & (time > t_start)
-        sel_time = time[sel]
-        sel_whitened_flux = whitened_flux[sel]
-        sel_err_flux = err_flux[sel]
+        try:
+            sel = (time < t_end) & (time > t_start)
+            sel_time = time[sel]
+            sel_whitened_flux = whitened_flux[sel]
+            sel_err_flux = err_flux[sel]
 
-        u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
-        a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
+            u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+            a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
 
-        rp = np.sqrt(fitd['transitdepth'])
+            rp = np.sqrt(fitd['transitdepth'])
 
-        initfitparams = {'t0':t_start + (t_end-t_start)/2.,
-                         'rp':rp,
-                         'sma':a_guess,
-                         'incl':85,
-                         'u':[u_linear,u_quad] }
+            initfitparams = {'t0':t_start + (t_end-t_start)/2.,
+                             'rp':rp,
+                             'sma':a_guess,
+                             'incl':85,
+                             'u':[u_linear,u_quad] }
 
-        fixedparams = {'ecc':0.,
-                       'omega':90.,
-                       'limb_dark':'quadratic',
-                       'period':fitd['period'] }
+            fixedparams = {'ecc':0.,
+                           'omega':90.,
+                           'limb_dark':'quadratic',
+                           'period':fitd['period'] }
 
-        priorbounds = {'rp':(rp-0.01, rp+0.01),
-                       'u_linear':(u_linear-1, u_linear+1),
-                       'u_quad':(u_quad-1, u_quad+1),
-                       't0':(np.min(sel_time), np.max(sel_time)),
-                       'sma':(0.7*a_guess,1.3*a_guess),
-                       'incl':(75,90) }
+            priorbounds = {'rp':(rp-0.01, rp+0.01),
+                           'u_linear':(u_linear-1, u_linear+1),
+                           'u_quad':(u_quad-1, u_quad+1),
+                           't0':(np.min(sel_time), np.max(sel_time)),
+                           'sma':(0.7*a_guess,1.3*a_guess),
+                           'incl':(75,90) }
 
-        spocparams = {'rp':spoc_rp,
-                      't0':spoc_t0,
-                      'u_linear':u_linear,
-                      'u_quad':u_quad,
-                      'sma':spoc_sma,
-                      'incl':spoc_incl }
+            spocparams = {'rp':spoc_rp,
+                          't0':spoc_t0,
+                          'u_linear':u_linear,
+                          'u_quad':u_quad,
+                          'sma':spoc_sma,
+                          'incl':spoc_incl }
 
-        t_num = str(transit_ix).zfill(3)
-        mandelagolfit_plotname = (
-            str(ticid)+'_mandelagol_fit_6d_t{:s}.png'.format(t_num)
-        )
-        corner_plotname = (
-            str(ticid)+'_corner_mandelagol_fit_6d_t{:s}.png'.format(t_num)
-        )
-        sample_plotname = (
-            str(ticid)+'_mandelagol_fit_samples_6d_t{:s}.h5'.format(t_num)
-        )
+            t_num = str(transit_ix).zfill(3)
+            mandelagolfit_plotname = (
+                str(ticid)+'_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+            )
+            corner_plotname = (
+                str(ticid)+'_corner_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+            )
+            sample_plotname = (
+                str(ticid)+'_mandelagol_fit_samples_6d_t{:s}.h5'.format(t_num)
+            )
 
-        mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
-        corner_savfile = fit_savdir + corner_plotname
-        if not os.path.exists(chain_savdir):
-            try:
-                os.mkdir(chain_savdir)
-            except:
-                raise AssertionError('you need to save chains')
-        samplesavpath = chain_savdir + sample_plotname
+            mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
+            corner_savfile = fit_savdir + corner_plotname
+            if not os.path.exists(chain_savdir):
+                try:
+                    os.mkdir(chain_savdir)
+                except:
+                    raise AssertionError('you need to save chains')
+            samplesavpath = chain_savdir + sample_plotname
 
-        print('beginning {:s}'.format(samplesavpath))
+            print('beginning {:s}'.format(samplesavpath))
 
-        plt.close('all')
-        mandelagolfit = lcfit.mandelagol_fit_magseries(
-                        sel_time, sel_whitened_flux, sel_err_flux,
-                        initfitparams, priorbounds, fixedparams,
-                        trueparams=spocparams, magsarefluxes=True,
-                        sigclip=[15,3], plotfit=mandelagolfit_savfile,
-                        plotcorner=corner_savfile,
-                        samplesavpath=samplesavpath, nworkers=nworkers,
-                        n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
-                        skipsampling=False,
-                        overwriteexistingsamples=overwriteexistingsamples,
-                        mcmcprogressbar=mcmcprogressbar)
-        #except Exception as e:
-        #    print(e)
-        #    print('transit {:d} failed, continue'.format(transit_ix))
-        #    continue
+            plt.close('all')
+            mandelagolfit = lcfit.mandelagol_fit_magseries(
+                            sel_time, sel_whitened_flux, sel_err_flux,
+                            initfitparams, priorbounds, fixedparams,
+                            trueparams=spocparams, magsarefluxes=True,
+                            sigclip=[15,3], plotfit=mandelagolfit_savfile,
+                            plotcorner=corner_savfile,
+                            samplesavpath=samplesavpath, nworkers=nworkers,
+                            n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
+                            skipsampling=False,
+                            overwriteexistingsamples=overwriteexistingsamples,
+                            mcmcprogressbar=mcmcprogressbar)
+        except Exception as e:
+            print(e)
+            print('transit {:d} failed, continue'.format(transit_ix))
+            continue
 
 
 if __name__ == '__main__':
