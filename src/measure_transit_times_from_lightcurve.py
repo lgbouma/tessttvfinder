@@ -7,10 +7,9 @@ usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
                                                 [--no-mcmcprogressbar]
                                                 [--overwritesamples]
                                                 [--no-overwritesamples]
-                                                [--spoc_rp SPOC_RP]
-                                                [--spoc_sma SPOC_SMA]
-                                                [--spoc_b SPOC_B]
-                                                [--spoc_t0 SPOC_T0]
+                                                [--getspocparams]
+                                                [--no-getspocparams]
+                                                [--chain_savdir CHAIN_SAVDIR]
 
 Given a lightcurve with transits (e.g., alerted from TESS Science Office),
 measure the times that they fall at by fitting models.
@@ -27,10 +26,11 @@ optional arguments:
   --no-mcmcprogressbar
   --overwritesamples
   --no-overwritesamples
-  --spoc_rp SPOC_RP     spoc rp/rstar
-  --spoc_sma SPOC_SMA   spoc a/rstar
-  --spoc_b SPOC_B       spoc impact param
-  --spoc_t0 SPOC_T0     spoc epoch
+  --getspocparams       whether to parse ../data/toi-plus-2018-09-14.csv for
+                        their "true" parameters
+  --no-getspocparams
+  --chain_savdir CHAIN_SAVDIR
+                        e.g., /home/foo/bar/
 '''
 from __future__ import division, print_function
 
@@ -63,13 +63,15 @@ def get_a_over_Rstar_guess(lcfile, period):
     lc_hdr = hdulist[1].header
     lc = hdulist[1].data
     ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
-    sep = 0.1*u.arcsec
+    sep = 1*u.arcsec
     obj = tic_single_object_crossmatch(ra,dec,sep.to(u.deg).value)
     if len(obj['data'])==1:
         rad = obj['data'][0]['rad']
         mass = obj['data'][0]['mass']
+    elif len(obj['data'])>1:
+        raise NotImplementedError('more than one object')
     else:
-        raise NotImplementedError
+        raise NotImplementedError('could not find TIC match within 1arcsec')
     if not isinstance(rad ,float) and not isinstance(mass, float):
         raise NotImplementedError
 
@@ -97,17 +99,25 @@ def get_limb_darkening_initial_guesses(lcfile):
     main_hdr = hdulist[0].header
     lc_hdr = hdulist[1].header
     lc = hdulist[1].data
-    ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
-    sep = 0.1*u.arcsec
-    obj = tic_single_object_crossmatch(ra,dec,sep.to(u.deg).value)
-    if len(obj['data'])==1:
-        teff = obj['data'][0]['Teff']
-        logg = obj['data'][0]['logg']
-        metallicity = obj['data'][0]['MH'] # often None
-        if not isinstance(metallicity,float):
-            metallicity = 0 # solar
-    else:
-        raise NotImplementedError
+
+    teff = main_hdr['TEFF']
+    logg = main_hdr['LOGG']
+    metallicity = main_hdr['MH']
+    if not isinstance(metallicity,float):
+        metallicity = 0 # solar
+
+    ### OLD IMPLEMENTATION THAT MIGHT STRUGGLE B/C OF MULTIPLE OBJECTS:
+    ### ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
+    ### sep = 0.1*u.arcsec
+    ### obj = tic_single_object_crossmatch(ra,dec,sep.to(u.deg).value)
+    ### if len(obj['data'])==1:
+    ###     teff = obj['data'][0]['Teff']
+    ###     logg = obj['data'][0]['logg']
+    ###     metallicity = obj['data'][0]['MH'] # often None
+    ###     if not isinstance(metallicity,float):
+    ###         metallicity = 0 # solar
+    ### else:
+    ###     raise NotImplementedError
 
     # get the Claret quadratic priors for TESS bandpass
     # the selected table below is good from Teff = 1500 - 12000K, logg = 2.5 to
@@ -135,6 +145,37 @@ def get_limb_darkening_initial_guesses(lcfile):
     u_quad = bar['bLSM']
 
     return float(u_linear), float(u_quad)
+
+
+def get_alerted_params(ticid):
+    import pandas as pd
+    df = pd.read_csv('../data/toi-plus-2018-09-14.csv', delimiter=',')
+    ap = df[df['tic_id']==ticid]
+    if not len(ap) == 1:
+        print('should only be one ticid match')
+        import IPython; IPython.embed()
+        raise AssertionError
+
+    spoc_rp = float(np.sqrt(ap['Transit Depth']))
+    spoc_t0 = float(ap['Epoc'])
+
+    Tdur = float(ap['Duration'])*u.hour
+    period = float(ap['Period'])*u.day
+
+    rstar = float(ap['R_s'])*u.Rsun
+    g = 10**(float(ap['logg']))*u.cm/u.s**2 # GMstar/Rstar^2
+    mstar = g * rstar**2 / const.G
+
+    a = ( period**2 * const.G*mstar / (4*np.pi**2) )**(1/3)
+
+    spoc_sma = (a.cgs/rstar.cgs).value # a/Rstar
+
+    T0 = period * rstar / (np.pi * a)
+    b = np.sqrt(1 - (Tdur.cgs/T0.cgs)**2) # Winn 2010, eq 18
+
+    spoc_b = b.value
+
+    return spoc_b, spoc_sma, spoc_t0, spoc_rp
 
 
 def get_transit_times(fitd, time, N):
@@ -184,12 +225,13 @@ def single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid):
     f.savefig(savdir+savname, dpi=400, bbox_inches='tight')
 
 
-def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
-                                          spoc_t0=None, spoc_sma=None,
-                                          spoc_b=None,
+def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
+                                          getspocparams=False,
                                           overwriteexistingsamples=False,
                                           mcmcprogressbar=False,
-                                          nworkers=4):
+                                          nworkers=4,
+                                          chain_savdir='/Users/luke/local/emcee_chains/',
+                                          lcdir=None):
 
     ##########################################
     # detrending parameters. mingap: minimum gap to determine time group size.
@@ -205,7 +247,8 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
         windowsize += 1
 
     # paths for reading and writing plots
-    lcdir = '../data/tess_lightcurves/'
+    if not lcdir:
+        raise AssertionError('input directory to find lightcurves')
     lcname = 'tess2018206045859-s0001-{:s}-111-s_llc.fits.gz'.format(
                 str(ticid).zfill(16))
     lcfile = lcdir + lcname
@@ -221,8 +264,6 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
     trapfit_savfile = fit_savdir + trapfit_plotname
     mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
     corner_savfile = fit_savdir + corner_plotname
-    chain_savdir = '/Users/luke/local/emcee_chains/'
-    samplesavpath = chain_savdir + sample_plotname
     ##########################################
 
     time, flux, err_flux = at.get_time_flux_errs_from_Ames_lightcurve(
@@ -249,10 +290,10 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
     blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
                                       startp=0.1, endp=endp,
                                       maxtransitduration=0.3, nworkers=8,
-                                      sigclip=10.)
+                                      sigclip=[15,3])
     fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
                                        blsdict['bestperiod'],
-                                       magsarefluxes=True, sigclip=10.,
+                                       magsarefluxes=True, sigclip=[15,3],
                                        perioddeltapercent=5)
 
     #  plot the BLS model.
@@ -269,96 +310,100 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps, spoc_rp=None,
     trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
                                               transitparams,
                                               magsarefluxes=True,
-                                              sigclip=10.,
+                                              sigclip=[15,3],
                                               plotfit=trapfit_savfile)
 
     # fit Mandel & Agol model to each single transit, +/- 5 transit durations
     tmids, t_starts, t_ends = get_transit_times(fitd, time, 5)
 
+    # get the guess physical parameters from the data
+    if getspocparams:
+        spoc_b, spoc_sma, spoc_t0, spoc_rp = get_alerted_params(ticid)
+
+    spoc_incl = None
+    if isinstance(spoc_b,float) and isinstance(spoc_sma, float):
+        # b = a/Rstar * cosi
+        cosi = spoc_b / spoc_sma
+        spoc_incl = np.degrees(np.arccos(cosi))
+
     for transit_ix, t_start, t_end in list(
         zip(range(len(t_starts)), t_starts, t_ends)
     ):
 
-        try:
-            sel = (time < t_end) & (time > t_start)
-            sel_time = time[sel]
-            sel_whitened_flux = whitened_flux[sel]
-            sel_err_flux = err_flux[sel]
+        #try:
+        sel = (time < t_end) & (time > t_start)
+        sel_time = time[sel]
+        sel_whitened_flux = whitened_flux[sel]
+        sel_err_flux = err_flux[sel]
 
-            u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
-            a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
+        u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+        a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
 
-            rp = np.sqrt(fitd['transitdepth'])
+        rp = np.sqrt(fitd['transitdepth'])
 
-            initfitparams = {'t0':t_start + (t_end-t_start)/2.,
-                             'rp':rp,
-                             'sma':a_guess,
-                             'incl':85,
-                             'u':[u_linear,u_quad] }
+        initfitparams = {'t0':t_start + (t_end-t_start)/2.,
+                         'rp':rp,
+                         'sma':a_guess,
+                         'incl':85,
+                         'u':[u_linear,u_quad] }
 
-            fixedparams = {'ecc':0.,
-                           'omega':90.,
-                           'limb_dark':'quadratic',
-                           'period':fitd['period'] }
+        fixedparams = {'ecc':0.,
+                       'omega':90.,
+                       'limb_dark':'quadratic',
+                       'period':fitd['period'] }
 
-            priorbounds = {'rp':(rp-0.01, rp+0.01),
-                           'u_linear':(u_linear-1, u_linear+1),
-                           'u_quad':(u_quad-1, u_quad+1),
-                           't0':(np.min(sel_time), np.max(sel_time)),
-                           'sma':(0.7*a_guess,1.3*a_guess),
-                           'incl':(75,90) }
+        priorbounds = {'rp':(rp-0.01, rp+0.01),
+                       'u_linear':(u_linear-1, u_linear+1),
+                       'u_quad':(u_quad-1, u_quad+1),
+                       't0':(np.min(sel_time), np.max(sel_time)),
+                       'sma':(0.7*a_guess,1.3*a_guess),
+                       'incl':(75,90) }
 
-            spoc_incl = None
-            if isinstance(spoc_b,float) and isinstance(spoc_sma, float):
-                # b = a/Rstar * cosi
-                cosi = spoc_b / spoc_sma
-                spoc_incl = np.degrees(np.arccos(cosi))
+        spocparams = {'rp':spoc_rp,
+                      't0':spoc_t0,
+                      'u_linear':u_linear,
+                      'u_quad':u_quad,
+                      'sma':spoc_sma,
+                      'incl':spoc_incl }
 
-            spocparams = {'rp':spoc_rp,
-                          't0':spoc_t0,
-                          'u_linear':u_linear,
-                          'u_quad':u_quad,
-                          'sma':spoc_sma,
-                          'incl':spoc_incl }
+        t_num = str(transit_ix).zfill(3)
+        mandelagolfit_plotname = (
+            str(ticid)+'_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+        )
+        corner_plotname = (
+            str(ticid)+'_corner_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+        )
+        sample_plotname = (
+            str(ticid)+'_mandelagol_fit_samples_6d_t{:s}.h5'.format(t_num)
+        )
 
-            t_num = str(transit_ix).zfill(3)
-            mandelagolfit_plotname = (
-                str(ticid)+'_mandelagol_fit_6d_t{:s}.png'.format(t_num)
-            )
-            corner_plotname = (
-                str(ticid)+'_corner_mandelagol_fit_6d_t{:s}.png'.format(t_num)
-            )
-            sample_plotname = (
-                str(ticid)+'_mandelagol_fit_samples_6d_t{:s}.h5'.format(t_num)
-            )
+        mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
+        corner_savfile = fit_savdir + corner_plotname
+        if not os.path.exists(chain_savdir):
+            try:
+                os.mkdir(chain_savdir)
+            except:
+                raise AssertionError('you need to save chains')
+        samplesavpath = chain_savdir + sample_plotname
 
-            mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
-            corner_savfile = fit_savdir + corner_plotname
-            chain_savdir = '/Users/luke/local/emcee_chains/'
-            if not os.path.exists(chain_savdir):
-                chain_savdir = '/home/luke/local/emcee_chains/'
-                if not os.path.exists(chain_savdir):
-                    raise AssertionError('you need to save chains')
-            samplesavpath = chain_savdir + sample_plotname
+        print('beginning {:s}'.format(samplesavpath))
 
-            print('beginning {:s}'.format(samplesavpath))
-
-            plt.close('all')
-            mandelagolfit = lcfit.mandelagol_fit_magseries(
-                            sel_time, sel_whitened_flux, sel_err_flux,
-                            initfitparams, priorbounds, fixedparams,
-                            trueparams=spocparams, magsarefluxes=True,
-                            sigclip=10., plotfit=mandelagolfit_savfile,
-                            plotcorner=corner_savfile,
-                            samplesavpath=samplesavpath, nworkers=nworkers,
-                            n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
-                            skipsampling=False,
-                            overwriteexistingsamples=overwriteexistingsamples,
-                            mcmcprogressbar=mcmcprogressbar)
-        except Exception as e:
-            print(e)
-            print('transit {:d} failed, continue'.format(transit_ix))
-            continue
+        plt.close('all')
+        mandelagolfit = lcfit.mandelagol_fit_magseries(
+                        sel_time, sel_whitened_flux, sel_err_flux,
+                        initfitparams, priorbounds, fixedparams,
+                        trueparams=spocparams, magsarefluxes=True,
+                        sigclip=[15,3], plotfit=mandelagolfit_savfile,
+                        plotcorner=corner_savfile,
+                        samplesavpath=samplesavpath, nworkers=nworkers,
+                        n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
+                        skipsampling=False,
+                        overwriteexistingsamples=overwriteexistingsamples,
+                        mcmcprogressbar=mcmcprogressbar)
+        #except Exception as e:
+        #    print(e)
+        #    print('transit {:d} failed, continue'.format(transit_ix))
+        #    continue
 
 
 if __name__ == '__main__':
@@ -391,19 +436,22 @@ if __name__ == '__main__':
         action='store_false')
     parser.set_defaults(overwrite=False)
 
-    parser.add_argument('--spoc_rp', type=float, default=None,
-        help=('spoc rp/rstar'))
-    parser.add_argument('--spoc_sma', type=float, default=None,
-        help=('spoc a/rstar'))
-    parser.add_argument('--spoc_b', type=float, default=None,
-        help=('spoc impact param'))
-    parser.add_argument('--spoc_t0', type=float, default=None,
-        help=('spoc epoch'))
+    parser.add_argument('--getspocparams', dest='spocparams',
+        action='store_true', help='whether to parse '
+        '../data/toi-plus-2018-09-14.csv for their "true" parameters')
+    parser.add_argument('--no-getspocparams', dest='spocparams',
+        action='store_false')
+    parser.set_defaults(spocparams=True)
+
+    parser.add_argument('--chain_savdir', type=str, default=None,
+        help=('e.g., /home/foo/bar/'))
+    parser.add_argument('--lcdir', type=str, default=None,
+        help=('e.g., /home/foo/lightcurves/'))
 
     args = parser.parse_args()
 
     measure_transit_times_from_lightcurve(
-        args.ticid, args.n_mcmc_steps, spoc_rp=args.spoc_rp,
-        spoc_t0=args.spoc_t0, spoc_sma=args.spoc_sma, spoc_b=args.spoc_b,
+        args.ticid, args.n_mcmc_steps, getspocparams=args.spocparams,
         overwriteexistingsamples=args.overwrite,
-        mcmcprogressbar=args.progressbar,nworkers=args.nworkers)
+        mcmcprogressbar=args.progressbar,nworkers=args.nworkers,
+        chain_savdir=args.chain_savdir, lcdir=args.lcdir)
