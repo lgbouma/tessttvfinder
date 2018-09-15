@@ -40,7 +40,6 @@ import matplotlib as mpl
 mpl.use('Agg')
 import numpy as np, matplotlib.pyplot as plt
 from astropy.io import fits
-from mast_utils import tic_single_object_crossmatch
 from astropy import units as u, constants as const
 
 from astrobase.varbase import lcfit
@@ -48,6 +47,7 @@ from astrobase import astrotess as at
 from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
+from astrobase.services.tic import tic_single_object_crossmatch
 
 np.random.seed(42)
 
@@ -158,8 +158,8 @@ def get_transit_times(fitd, time, N):
     t_IVs = tmids_obsd + tdur/2
 
     # focus on the times around transit
-    t_starts = t_Is - 5*tdur
-    t_ends = t_Is + 5*tdur
+    t_starts = t_Is - N*tdur
+    t_ends = t_Is + N*tdur
 
     return tmids, t_starts, t_ends
 
