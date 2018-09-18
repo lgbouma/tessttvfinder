@@ -16,3 +16,4 @@ relevant resources
 * [BATMAN](http://astro.uchicago.edu/~kreidberg/batman/)
 * [emcee](https://emcee.readthedocs.io/en/latest/)
 * [corner](https://corner.readthedocs.io/en/latest/api.html)
+* Eastman et al. (2010) for HJD to BJD conversion.
