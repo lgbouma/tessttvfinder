@@ -201,7 +201,8 @@ def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
 
 
 def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
-                                           overwrite=False, savname=None):
+                                           overwrite=False, savname=None,
+                                           ylim=None):
     '''
     args:
         df -- made by get_ETD_params
@@ -351,6 +352,8 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
         len(df)), fontsize='x-small')
     ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
+    if ylim:
+        ax.set_ylim(ylim)
 
     # make the legend
     for _dq in np.linspace(np.nanmin(dq), np.nanmax(dq), num=6):
@@ -407,7 +410,8 @@ def get_ETD_params(fglob='../data/*_ETD.txt'):
 
 def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
                                etd_glob='../data/*_ETD.txt',
-                               tesstimecsv=None):
+                               tesstimecsv=None,
+                               asastimecsv=None):
     '''
     Make a dataframe of both the manually-curated transit times, and the
     transit times measured from TESS lightcurves.
@@ -420,6 +424,8 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
         file
 
         tesstimecsv (str): path to the csv of measured TESS transit times
+
+        asastimecsv (str): path to the csv of measured ASAS transit times
 
     returns:
         dict with dataframe, filename, and metadata.
@@ -461,15 +467,9 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
             tf['where_I_got_time'] = (
                 np.repeat('measured_from_SPOC_alert_LC', len(tf['BJD_TDB']))
             )
-            tf['reference'] = (
-                np.repeat('me', len(tf['BJD_TDB']))
-            )
-            tf['epoch'] = (
-                np.repeat(np.nan, len(tf['BJD_TDB']))
-            )
-            tf['comment'] = (
-                np.repeat('', len(tf['BJD_TDB']))
-            )
+            tf['reference'] = np.repeat('me', len(tf['BJD_TDB']))
+            tf['epoch'] = np.repeat(np.nan, len(tf['BJD_TDB']))
+            tf['comment'] = np.repeat('', len(tf['BJD_TDB']))
             tf.rename(index=str,columns={'BJD_TDB':'t0_BJD_TDB',
                                          't0_bigerr':'err_t0'}, inplace=True)
             df = pd.concat((df, tf),join='inner')
@@ -477,6 +477,11 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
             outname = man_fname.replace('.csv','_and_TESS_times.csv')
             df.to_csv(outname, index=False)
             print('saved {:s}'.format(outname))
+
+        if asastimecsv:
+            # manually curated with extra ASAS time
+            at = pd.read_csv(asastimecsv, delimiter=';', comment=None)
+            df = at
 
         # set t0 as the median time
         t0 = np.nanmedian(df['t0_BJD_TDB'])
@@ -510,11 +515,15 @@ def make_manually_curated_OminusC_plots():
     ##############################################
     # make plots based on manually-curated times #
     ##############################################
-    manual_glob = '../data/*_manual.csv'#'../data/*WASP-46*_manual.csv'
-    tesstimecsv = None#'../data/231663901_measured_TESS_times_18_transits.csv'
+    manual_glob = '../data/*WASP-18*_manual.csv'#'../data/*_manual.csv'#'../data/*WASP-46*_manual.csv'
+    tesstimecsv = None #'../data/231663901_measured_TESS_times_18_transits.csv'
+    asastimecsv = '../data/WASP-18b_manual_and_ASAS_times.csv' #None
+
+    ylim = [-0.031,0.011] # None
 
     d = get_manual_and_TESS_ttimes(manual_glob=manual_glob,
-                                   tesstimecsv=tesstimecsv)
+                                   tesstimecsv=tesstimecsv,
+                                   asastimecsv=asastimecsv)
 
     for df, fname, init_period in list(
         zip(d['df'], d['fname'], d['init_period'])
@@ -522,8 +531,12 @@ def make_manually_curated_OminusC_plots():
 
         yparam = 'O-C'
 
-        if tesstimecsv:
+        if tesstimecsv and not asastimecsv:
             savdir = '../results/manual_plus_tess_O-C_vs_epoch/'
+        elif asastimecsv and not tesstimecsv:
+            savdir = '../results/manual_plus_asas_O-C_vs_epoch/'
+        elif asastimecsv and tesstimecsv:
+            raise NotImplementedError
         else:
             savdir = '../results/manual_O-C_vs_epoch/'
         savname = (
@@ -534,7 +547,8 @@ def make_manually_curated_OminusC_plots():
 
         scatter_plot_parameter_vs_epoch_manual(df, yparam, fname, init_period,
                                                overwrite=True,
-                                               savname=savname)
+                                               savname=savname,
+                                               ylim=ylim)
 
 if __name__ == '__main__':
 

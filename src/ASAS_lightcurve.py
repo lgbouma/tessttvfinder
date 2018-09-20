@@ -338,7 +338,8 @@ if __name__ == "__main__":
     lcfile = asas_lcs[0]
 
     fit_savdir = '../results/ASAS_lightcurves/'
-    chain_savdir = '/Users/luke/local/emcee_chains'
+    #chain_savdir = '/Users/luke/local/emcee_chains/'
+    chain_savdir = '/home/luke/local/emcee_chains/'
     savdir='../results/ASAS_lightcurves/'
 
     #########
@@ -372,10 +373,17 @@ if __name__ == "__main__":
     ####################################################################
     # fit the lightcurve, show the phased result, get the transit time #
     ####################################################################
-    # get the guess physical parameters from Hellier+ 2009
+    ## # get the guess physical parameters from Hellier+ 2009
+    ## true_b, true_sma, true_t0, true_rp = (
+    ##     0.25, 0.02026, epoch, np.sqrt(0.00875) )
+
     true_b, true_sma, true_t0, true_rp = (
-        0.25, 0.02026, epoch, np.sqrt(0.00875) )
+        0.25, None, epoch, 1.2*np.sqrt(0.00875) )  # nice numbers for initial guess
     u_linear, u_quad = 0, 0
+
+    sma_au = 0.02026*u.au
+    rstar = 1.216*u.Rsun
+    true_sma = (sma_au.cgs / rstar.cgs).value
 
     true_incl = None
     if isinstance(true_b,float) and isinstance(true_sma, float):
@@ -383,24 +391,30 @@ if __name__ == "__main__":
         cosi = true_b / true_sma
         true_incl = np.degrees(np.arccos(cosi))
 
-    initfitparams = {'t0':epoch, 'rp':true_rp, 'sma':true_sma, 'incl':85,
-                     'u':[u_linear,u_quad] }
+    ## # approach #1: use the discovery epoch as initial guess, and narrow priors
+    ## # around it
+    ## initfitparams = {'t0':epoch, 'sma':true_sma}
+    ## priorbounds = {'t0':(epoch-0.03, epoch+0.03),
+    ##                'sma':(0.7*true_sma,1.3*true_sma)}
+    ## discoveryparams = {'t0':true_t0, 'sma':true_sma}
+    # approach #2: take epoch closest mean time as initial guess (weights
+    # appropriately for the timeseries), and enforce in prior that the time is
+    # within +/- period/2 of that.
+    init_ix = int(np.floor( (np.nanmean(stimes) - epoch)/period ))
+    init_t0 = true_t0 + init_ix*period
+
+    initfitparams = {'t0': init_t0, 'sma':true_sma}
+    priorbounds = {'t0':(init_t0-period/2, init_t0+period/2),
+                   'sma':(0.7*true_sma,1.3*true_sma) }
+    discoveryparams = {'t0':init_t0, 'sma':true_sma}
 
     fixedparams = {'ecc':0., 'omega':90., 'limb_dark':'quadratic',
-                   'period':period }
+                   'period':period, 'incl': 86.0,
+                   'u':[u_linear,u_quad], 'rp':true_rp}
 
-    priorbounds = {'rp':(true_rp-0.1, true_rp+0.1),
-                   'u_linear':(u_linear-1, u_linear+1),
-                   'u_quad':(u_quad-1, u_quad+1),
-                   't0':(epoch-0.03, epoch+0.03),
-                   'sma':(0.7*true_sma,1.3*true_sma), 'incl':(75,90) }
-
-    discoveryparams = {'rp':true_rp, 't0':true_t0, 'u_linear':u_linear,
-                       'u_quad':u_quad, 'sma':true_sma, 'incl':true_incl }
-
-    mandelagolfit_plotname = ( str(plname)+'_mandelagol_fit_6d_fixperiod.png')
-    corner_plotname = ( str(plname)+'_corner_mandelagol_fit_6d_fixperiod.png')
-    sample_plotname = ( str(plname)+'_mandelagol_fit_samples_6d_fixperiod.h5')
+    mandelagolfit_plotname = ( str(plname)+'_mandelagol_fit_2d_fixperiod.png')
+    corner_plotname = ( str(plname)+'_corner_mandelagol_fit_2d_fixperiod.png')
+    sample_plotname = ( str(plname)+'_mandelagol_fit_samples_2d_fixperiod.h5')
 
     mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
     corner_savfile = fit_savdir + corner_plotname
@@ -421,28 +435,39 @@ if __name__ == "__main__":
                     trueparams=discoveryparams, magsarefluxes=True,
                     sigclip=None, plotfit=mandelagolfit_savfile,
                     plotcorner=corner_savfile,
-                    samplesavpath=samplesavpath, nworkers=8,
-                    n_mcmc_steps=1000, eps=1e-2, n_walkers=500,
+                    samplesavpath=samplesavpath, nworkers=10,
+                    n_mcmc_steps=4000, eps=1e-2, n_walkers=500,
                     skipsampling=False,
                     overwriteexistingsamples=False,
                     mcmcprogressbar=True)
 
-    maf_savpath = "../data/"+str(plname)+"_mandelagol_fit_6d_fixperiod.pickle"
+    maf_savpath = "../data/"+str(plname)+"_mandelagol_fit_2d_fixperiod.pickle"
     with open(maf_savpath, 'wb') as f:
         pickle.dump(mandelagolfit, f, pickle.HIGHEST_PROTOCOL)
         print('saved {:s}'.format(maf_savpath))
 
     fitfluxs = mandelagolfit['fitinfo']['fitmags']
-    initfluxs = mandelagolfit['fitinfo']['initmags']
+    initfluxs = mandelagolfit['fitinfo']['initialmags']
 
-    import IPython; IPython.embed()
-    #FIXME
-
-    outfile = savdir+'WASP-18b_phased_mandelagolfit.png'
+    outfile = savdir+'WASP-18b_phased_initialguess_fit.png'
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
-                           errs=serrs, normto=False, epoch=epoch,
+                           errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
-                           plotphaselim=[-.6,.6], plotdpi=400, linewidth=0,
-                           elinewidth=0)
+                           plotphaselim=[-.6,.6], plotdpi=400,
+                           modelmags=initfluxs, modeltimes=stimes)
 
+    fitepoch = mandelagolfit['fitinfo']['fitepoch']
+    fiterrors = mandelagolfit['fitinfo']['finalparamerrs']
+    fitepoch_perr = fiterrors['std_perrs']['t0']
+    fitepoch_merr = fiterrors['std_merrs']['t0']
 
+    outfile = savdir+'WASP-18b_phased_fitfluxs.png'
+    plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
+                           errs=None, normto=False, epoch=fitepoch,
+                           outfile=outfile, sigclip=False, phasebin=0.02,
+                           plotphaselim=[-.6,.6], plotdpi=400,
+                           modelmags=fitfluxs, modeltimes=stimes)
+
+    print('fitepoch : {:.8f}'.format(fitepoch))
+    print('fitepoch_perr: {:.8f}'.format(fitepoch_perr))
+    print('fitepoch_merr: {:.8f}'.format(fitepoch_merr))
