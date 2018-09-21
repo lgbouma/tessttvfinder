@@ -300,6 +300,18 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     ax.text(.04, .04, pl_name,
             ha='left', va='bottom', transform=ax.transAxes, fontsize='small')
 
+    # add upper xscale, with BJD-2450000 on top
+    t_cut = 2450000
+    ax_upper = ax.twiny()
+    ax_upper.errorbar(tmid[sel]-t_cut, yvals, yerr=yerrs, elinewidth=0.3,
+                      ecolor='lightgray', capsize=2, capthick=0.3, linewidth=0,
+                      fmt='s', ms=0, zorder=0, alpha=0.)
+    ax_upper.set_xlabel('BJD-{:d}'.format(t_cut))
+
+    for a in [ax, ax_upper]:
+        a.get_yaxis().set_tick_params(which='both', direction='in')
+        a.get_xaxis().set_tick_params(which='both', direction='in')
+
     # make vertical lines to roughly show TESS observation window function for
     # all sectors that this planet is observed in
     tw = pd.read_csv('../data/tess_sector_time_windows.csv')
