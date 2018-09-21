@@ -21,6 +21,7 @@ from astrobase.plotbase import plot_phased_mag_series
 from astrobase import periodbase, checkplot
 from astrobase.lcmath import phase_magseries, sigclip_magseries
 from astrobase.varbase import lcfit
+from astrobase.periodbase import get_snr_of_dip
 
 from glob import glob
 from parse import parse, search
@@ -318,6 +319,33 @@ def run_asas_periodograms(times, mags, errs):
                                          outfile=outpath, objectinfo=None)
 
 
+def estimate_achievable_tmid_precision(snr):
+    '''
+    From summary of Carter et al. 2009:
+
+    sigma_tc = Q^{-1} * T * sqrt(θ/2)
+
+    Q = SNR of the transit.
+    T = transit duration, which is 2.14 hours from discovery paper.
+    θ = τ/T = ratio of ingress to total duration
+            ~= (few minutes [guess]) / 2.14 hours
+    '''
+
+    t_ingress = 10*u.minute
+    t_duration = 2.14*u.hour # discovery paper
+
+    theta = t_ingress/t_duration
+
+    sigma_tc = (1/snr * t_duration * np.sqrt(theta/2))
+
+    print('assume t_ingress = {:.1f}'.format(t_ingress))
+    print('measured SNR={:.2f}, gives sigma_tc = {:.2e} = {:.2e} = {:.2e}'.
+          format(snr, sigma_tc.to(u.minute), sigma_tc.to(u.hour),
+                 sigma_tc.to(u.day))
+    )
+
+    return sigma_tc.to(u.day).value
+
 
 if __name__ == "__main__":
 
@@ -378,8 +406,12 @@ if __name__ == "__main__":
     ##     0.25, 0.02026, epoch, np.sqrt(0.00875) )
 
     true_b, true_sma, true_t0, true_rp = (
-        0.25, None, epoch, 1.2*np.sqrt(0.00875) )  # nice numbers for initial guess
-    u_linear, u_quad = 0, 0
+        0.25, None, epoch, np.sqrt(0.00875) )  # nice numbers for initial guess
+
+    # ClarHa03 Claret & Hauschildt (2003A+A...412..241C), V band, via JKTLD
+    # note this ASAS data is V band, so this should be fine, unless the transit
+    # is seriously chromatic.
+    u_linear, u_quad = 0.5066, 0.1946
 
     sma_au = 0.02026*u.au
     rstar = 1.216*u.Rsun
@@ -397,24 +429,40 @@ if __name__ == "__main__":
     ## priorbounds = {'t0':(epoch-0.03, epoch+0.03),
     ##                'sma':(0.7*true_sma,1.3*true_sma)}
     ## discoveryparams = {'t0':true_t0, 'sma':true_sma}
-    # approach #2: take epoch closest mean time as initial guess (weights
+
+    ## # approach #2: take epoch closest mean time as initial guess (weights
+    ## # appropriately for the timeseries), and enforce in prior that the time is
+    ## # within +/- period/2 of that. fit for duration and t0.
+    ## init_ix = int(np.floor( (np.nanmean(stimes) - epoch)/period ))
+    ## init_t0 = true_t0 + init_ix*period
+
+    ## initfitparams = {'t0': init_t0, 'sma':true_sma}
+    ## priorbounds = {'t0':(init_t0-0.03, init_t0+0.03),
+    ##                'sma':(0.7*true_sma,1.3*true_sma) }
+    ## discoveryparams = {'t0':init_t0, 'sma':true_sma}
+
+    ## fixedparams = {'ecc':0., 'omega':90., 'limb_dark':'quadratic',
+    ##                'period':period, 'incl': 86.0,
+    ##                'u':[u_linear,u_quad], 'rp':true_rp}
+
+    # approach #3: take epoch closest mean time as initial guess (weights
     # appropriately for the timeseries), and enforce in prior that the time is
-    # within +/- period/2 of that.
+    # within +/- period/2 of that. fit for only t0.
     init_ix = int(np.floor( (np.nanmean(stimes) - epoch)/period ))
     init_t0 = true_t0 + init_ix*period
 
-    initfitparams = {'t0': init_t0, 'sma':true_sma}
-    priorbounds = {'t0':(init_t0-period/2, init_t0+period/2),
-                   'sma':(0.7*true_sma,1.3*true_sma) }
-    discoveryparams = {'t0':init_t0, 'sma':true_sma}
+    initfitparams = {'t0': init_t0}
+    priorbounds = {'t0':(init_t0-0.03, init_t0+0.03),
+                  }
+    discoveryparams = {'t0':init_t0}
 
     fixedparams = {'ecc':0., 'omega':90., 'limb_dark':'quadratic',
                    'period':period, 'incl': 86.0,
-                   'u':[u_linear,u_quad], 'rp':true_rp}
+                   'u':[u_linear,u_quad], 'rp':true_rp, 'sma':true_sma}
 
-    mandelagolfit_plotname = ( str(plname)+'_mandelagol_fit_2d_fixperiod.png')
-    corner_plotname = ( str(plname)+'_corner_mandelagol_fit_2d_fixperiod.png')
-    sample_plotname = ( str(plname)+'_mandelagol_fit_samples_2d_fixperiod.h5')
+    mandelagolfit_plotname = ( str(plname)+'_mandelagol_fit_1d_fixperiod.png')
+    corner_plotname = ( str(plname)+'_corner_mandelagol_fit_1d_fixperiod.png')
+    sample_plotname = ( str(plname)+'_mandelagol_fit_samples_1d_fixperiod.h5')
 
     mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
     corner_savfile = fit_savdir + corner_plotname
@@ -436,12 +484,12 @@ if __name__ == "__main__":
                     sigclip=None, plotfit=mandelagolfit_savfile,
                     plotcorner=corner_savfile,
                     samplesavpath=samplesavpath, nworkers=10,
-                    n_mcmc_steps=4000, eps=1e-2, n_walkers=500,
+                    n_mcmc_steps=5000, eps=1e-2, n_walkers=500,
                     skipsampling=False,
-                    overwriteexistingsamples=False,
+                    overwriteexistingsamples=True,
                     mcmcprogressbar=True)
 
-    maf_savpath = "../data/"+str(plname)+"_mandelagol_fit_2d_fixperiod.pickle"
+    maf_savpath = "../data/"+str(plname)+"_mandelagol_fit_1d_fixperiod.pickle"
     with open(maf_savpath, 'wb') as f:
         pickle.dump(mandelagolfit, f, pickle.HIGHEST_PROTOCOL)
         print('saved {:s}'.format(maf_savpath))
@@ -449,7 +497,7 @@ if __name__ == "__main__":
     fitfluxs = mandelagolfit['fitinfo']['fitmags']
     initfluxs = mandelagolfit['fitinfo']['initialmags']
 
-    outfile = savdir+'WASP-18b_phased_initialguess_fit.png'
+    outfile = savdir+'WASP-18b_phased_initialguess_1d_fit.png'
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
@@ -461,7 +509,7 @@ if __name__ == "__main__":
     fitepoch_perr = fiterrors['std_perrs']['t0']
     fitepoch_merr = fiterrors['std_merrs']['t0']
 
-    outfile = savdir+'WASP-18b_phased_fitfluxs.png'
+    outfile = savdir+'WASP-18b_phased_1d_fitfluxs.png'
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=fitepoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
@@ -471,3 +519,13 @@ if __name__ == "__main__":
     print('fitepoch : {:.8f}'.format(fitepoch))
     print('fitepoch_perr: {:.8f}'.format(fitepoch_perr))
     print('fitepoch_merr: {:.8f}'.format(fitepoch_merr))
+
+    dsnr = get_snr_of_dip(stimes, sfluxs, stimes, fitfluxs, magsarefluxes=True)
+
+    sigma_tc_theory = estimate_achievable_tmid_precision(dsnr)
+
+    print('mean fitepoch err / theory err = {:.2f}'.format(
+        np.mean([fitepoch_merr, fitepoch_perr]) / sigma_tc_theory
+    ))
+
+    import IPython; IPython.embed()
