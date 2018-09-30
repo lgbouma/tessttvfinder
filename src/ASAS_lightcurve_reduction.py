@@ -15,6 +15,7 @@ from astropy.io import ascii
 from astropy.io import fits
 from astropy import units as u, constants as const
 from astropy.table import Table
+from astropy.coordinates import SkyCoord
 
 from astrobase.periodbase import kbls
 from astrobase.plotbase import plot_phased_mag_series
@@ -95,6 +96,8 @@ def read_ASAS_lightcurve(lcfile):
 
 def HJD_UTC_to_BJD_TDB_eastman(hjd_arr, ra, dec):
     '''
+    Given HJD_UTC, compute BJD_TDB by querying the Eastman et al (2010) API.
+
     CITE: Eastman et al. (2010)
 
     example query:
@@ -264,14 +267,14 @@ def wrangle_ASAS_lightcurve(df, dslices, ra, dec, min_N_obs=10):
 
 
 def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
-                 savdir='../results/ASAS_lightcurves/'):
+                  plname, savdir='../results/ASAS_lightcurves/'):
 
     f,ax=plt.subplots(figsize=(12,6))
     ax.scatter(times, mags)
     ax.set_xlabel('BJD TDB')
     ax.set_ylabel('ASAS mag (best ap)')
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
-    f.savefig(savdir+'WASP-18b_bestap.png', dpi=400)
+    f.savefig(savdir+'{:s}_bestap.png'.format(plname), dpi=400)
     plt.close('all')
 
     f,ax=plt.subplots(figsize=(12,6))
@@ -279,7 +282,7 @@ def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     ax.set_xlabel('BJD TDB')
     ax.set_ylabel('sigclipped ASAS mag (best ap)')
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
-    f.savefig(savdir+'WASP-18b_sigclipped_bestap.png', dpi=400)
+    f.savefig(savdir+'{:s}_sigclipped_bestap.png'.format(plname), dpi=400)
     plt.close('all')
 
     f,ax=plt.subplots(figsize=(12,6))
@@ -288,19 +291,33 @@ def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     ax.set_ylabel('sigclipped ASAS mag (best ap)')
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
     ax.set_xlim([-.6,.6])
-    f.savefig(savdir+'WASP-18b_phased_on_discovery_params.png', dpi=400)
+    f.savefig(savdir+'{:s}_phased_on_TEPCAT_params.png'.format(plname),
+              dpi=400)
     plt.close('all')
 
-    outfile = savdir+'WASP-18b_phased_on_discovery_params_binned.png'
+    n_obs = [148,296,592,1184]
+    phasebin = [0.08,0.04,0.02,0.01]
+    from scipy.interpolate import interp1d
+    pfn = (
+        interp1d(n_obs, phasebin, bounds_error=False, fill_value='extrapolate')
+    )
+
+    pb = float(pfn(len(stimes)))
+
+    outfile = (
+        savdir+'{:s}_phased_on_TEPCAT_params_binned.png'.format(plname)
+    )
     plot_phased_mag_series(stimes, smags, period, magsarefluxes=False,
                            errs=None, normto=False, epoch=epoch,
-                           outfile=outfile, sigclip=False, phasebin=0.02,
+                           outfile=outfile, sigclip=False, phasebin=pb,
                            plotphaselim=[-.6,.6], plotdpi=400)
 
-    outfile = savdir+'WASP-18b_fluxs_phased_on_discovery_params_binned.png'
+    outfile = (
+        savdir+'{:s}_fluxs_phased_on_TEPCAT_params_binned.png'.format(plname)
+    )
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
-                           outfile=outfile, sigclip=False, phasebin=0.02,
+                           outfile=outfile, sigclip=False, phasebin=pb,
                            plotphaselim=[-.6,.6], plotdpi=400)
 
 def run_asas_periodograms(times, mags, errs):
@@ -347,63 +364,33 @@ def estimate_achievable_tmid_precision(snr):
     return sigma_tc.to(u.day).value
 
 
-if __name__ == "__main__":
+def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
+                                    plname, period, epoch,
+                                    n_mcmc_steps=100,
+                                    overwriteexistingsamples=False):
+    '''
+    fit for the epoch, fix all other transit parameters.
 
-    plname = 'WASP-18b'
-    # table 1 of Hellier et al 2009 discovery paper
-    period = 0.94145299
-    epoch = 2454221.48163
-    # decimal ra, dec of target used only for BJD conversion
-    ra, dec = 24.354311, -45.677887
+    args:
+        stimes, sluxs, serrs (np.ndarray): sigma-clipped times, fluxes, and
+        errors.  (Errors can be either empirical, or from ASAS).
 
-    # options when running
-    try_to_recover_periodograms = False
-    make_lc_plots = True
+        savstr (str): used as identifier in chains, plots, etc.
 
-    # file parsing
-    lcdir = '../data/ASAS_lightcurves/'
-    asas_lcs = glob(lcdir+'*.txt')
-    lcfile = asas_lcs[0]
+        plname (str): used to prepend in chains, plots, etc.
+
+        for example,
+            mandelagolfit_plotname = (
+                str(plname)+'_mandelagol_fit_{:s}_fixperiod.png'.format(savstr)
+            )
+
+        period, epoch (float, units of days): used to fix the period, and get
+        initial epoch guess.
+    '''
 
     fit_savdir = '../results/ASAS_lightcurves/'
-    #chain_savdir = '/Users/luke/local/emcee_chains/'
     chain_savdir = '/home/luke/local/emcee_chains/'
     savdir='../results/ASAS_lightcurves/'
-
-    #########
-    # begin #
-    #########
-    tempdf, dslices = read_ASAS_lightcurve(lcfile)
-    df = wrangle_ASAS_lightcurve(tempdf, dslices, ra, dec)
-
-    times, mags, errs = (nparr(df['BJD_TDB']), nparr(df['SMAG_bestap']),
-                         nparr(df['SERR_bestap']))
-
-    stimes, smags, serrs = sigclip_magseries(times, mags, errs, sigclip=[5,5],
-                                             magsarefluxes=False)
-
-    phzd = phase_magseries(stimes, smags, period, epoch, wrap=True, sort=True)
-
-    # convert from mags to relative fluxes for fitting
-    # m_x - m_x0 = -5/2 log10( f_x / f_x0 )
-    # so
-    # f_x = f_x0 * 10 ** ( -2/5 (m_x - m_x0) )
-    m_x0, f_x0 = 10, 1e3 # arbitrary
-    sfluxs = f_x0 * 10**( -0.4 * (smags - m_x0) )
-    sfluxs /= np.nanmedian(sfluxs)
-
-    if try_to_recover_periodograms:
-        run_asas_periodograms(times, mags, errs)
-
-    if make_lc_plots:
-        plot_asas_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs)
-
-    ####################################################################
-    # fit the lightcurve, show the phased result, get the transit time #
-    ####################################################################
-    ## # get the guess physical parameters from Hellier+ 2009
-    ## true_b, true_sma, true_t0, true_rp = (
-    ##     0.25, 0.02026, epoch, np.sqrt(0.00875) )
 
     true_b, true_sma, true_t0, true_rp = (
         0.25, None, epoch, np.sqrt(0.00875) )  # nice numbers for initial guess
@@ -447,7 +434,7 @@ if __name__ == "__main__":
 
     # approach #3: take epoch closest mean time as initial guess (weights
     # appropriately for the timeseries), and enforce in prior that the time is
-    # within +/- period/2 of that. fit for only t0.
+    # within +/- (small window) of that. fit for only t0.
     init_ix = int(np.floor( (np.nanmean(stimes) - epoch)/period ))
     init_t0 = true_t0 + init_ix*period
 
@@ -460,9 +447,15 @@ if __name__ == "__main__":
                    'period':period, 'incl': 86.0,
                    'u':[u_linear,u_quad], 'rp':true_rp, 'sma':true_sma}
 
-    mandelagolfit_plotname = ( str(plname)+'_mandelagol_fit_1d_fixperiod.png')
-    corner_plotname = ( str(plname)+'_corner_mandelagol_fit_1d_fixperiod.png')
-    sample_plotname = ( str(plname)+'_mandelagol_fit_samples_1d_fixperiod.h5')
+    mandelagolfit_plotname = (
+        str(plname)+'_mandelagol_fit_{:s}_fixperiod.png'.format(savstr)
+    )
+    corner_plotname = (
+        str(plname)+'_corner_mandelagol_fit_{:s}_fixperiod.png'.format(savstr)
+    )
+    sample_plotname = (
+        str(plname)+'_mandelagol_fit_samples_{:s}_fixperiod.h5'.format(savstr)
+    )
 
     mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
     corner_savfile = fit_savdir + corner_plotname
@@ -483,13 +476,16 @@ if __name__ == "__main__":
                     trueparams=discoveryparams, magsarefluxes=True,
                     sigclip=None, plotfit=mandelagolfit_savfile,
                     plotcorner=corner_savfile,
-                    samplesavpath=samplesavpath, nworkers=10,
-                    n_mcmc_steps=5000, eps=1e-2, n_walkers=500,
+                    samplesavpath=samplesavpath, nworkers=16,
+                    n_mcmc_steps=n_mcmc_steps, eps=1e-2, n_walkers=500,
                     skipsampling=False,
-                    overwriteexistingsamples=True,
+                    overwriteexistingsamples=overwriteexistingsamples,
                     mcmcprogressbar=True)
 
-    maf_savpath = "../data/"+str(plname)+"_mandelagol_fit_1d_fixperiod.pickle"
+    maf_savpath = (
+        "../data/"+str(plname)+
+        "_mandelagol_fit_{:s}_fixperiod.pickle".format(savstr)
+    )
     with open(maf_savpath, 'wb') as f:
         pickle.dump(mandelagolfit, f, pickle.HIGHEST_PROTOCOL)
         print('saved {:s}'.format(maf_savpath))
@@ -497,7 +493,10 @@ if __name__ == "__main__":
     fitfluxs = mandelagolfit['fitinfo']['fitmags']
     initfluxs = mandelagolfit['fitinfo']['initialmags']
 
-    outfile = savdir+'WASP-18b_phased_initialguess_1d_fit.png'
+    outfile = (
+        savdir+
+        'WASP-18b_phased_initialguess_{:s}_fit.png'.format(savstr)
+    )
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
@@ -509,7 +508,10 @@ if __name__ == "__main__":
     fitepoch_perr = fiterrors['std_perrs']['t0']
     fitepoch_merr = fiterrors['std_merrs']['t0']
 
-    outfile = savdir+'WASP-18b_phased_1d_fitfluxs.png'
+    outfile = (
+        savdir+
+        'WASP-18b_phased_{:s}_fitfluxs.png'.format(savstr)
+    )
     plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=fitepoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
@@ -520,12 +522,183 @@ if __name__ == "__main__":
     print('fitepoch_perr: {:.8f}'.format(fitepoch_perr))
     print('fitepoch_merr: {:.8f}'.format(fitepoch_merr))
 
-    dsnr = get_snr_of_dip(stimes, sfluxs, stimes, fitfluxs, magsarefluxes=True)
+    snr, _, empirical_noise = get_snr_of_dip(
+        stimes, sfluxs, stimes, fitfluxs, magsarefluxes=True)
 
-    sigma_tc_theory = estimate_achievable_tmid_precision(dsnr)
+    sigma_tc_theory = estimate_achievable_tmid_precision(snr)
+
+    print(
+        'mean fitepoch err: {:.2f}'.format(
+        np.mean([fitepoch_merr, fitepoch_perr]))
+    )
 
     print('mean fitepoch err / theory err = {:.2f}'.format(
         np.mean([fitepoch_merr, fitepoch_perr]) / sigma_tc_theory
     ))
 
-    import IPython; IPython.embed()
+    print('mean data error from ASAS = {:.2e}'.format(np.mean(serrs))+
+          '\nempirical RMS = {:.2e}'.format(empirical_noise)
+    )
+
+    return empirical_noise
+
+def reduce_WASP_18b():
+
+    # options when running
+    try_to_recover_periodograms = False
+    make_lc_plots = True
+
+    plname = 'WASP-18b'
+    # table 1 of Hellier et al 2009 discovery paper
+    period, epoch = 0.94145299, 2454221.48163
+    # decimal ra, dec of target used only for BJD conversion
+    ra, dec = 24.354311, -45.677887
+
+    # file parsing
+    lcdir = '../data/ASAS_lightcurves/'
+    asas_lcs = [f for f in glob(lcdir+'*.txt') if 'WASP-18' in f]
+    lcfile = asas_lcs[0]
+
+    fit_savdir = '../results/ASAS_lightcurves/'
+    chain_savdir = '/home/luke/local/emcee_chains/'
+    savdir='../results/ASAS_lightcurves/'
+
+    #########
+    # begin #
+    #########
+    tempdf, dslices = read_ASAS_lightcurve(lcfile)
+    df = wrangle_ASAS_lightcurve(tempdf, dslices, ra, dec)
+
+    times, mags, errs = (nparr(df['BJD_TDB']), nparr(df['SMAG_bestap']),
+                         nparr(df['SERR_bestap']))
+
+    stimes, smags, serrs = sigclip_magseries(times, mags, errs, sigclip=[5,5],
+                                             magsarefluxes=False)
+
+    phzd = phase_magseries(stimes, smags, period, epoch, wrap=True, sort=True)
+
+    # convert from mags to relative fluxes for fitting
+    # m_x - m_x0 = -5/2 log10( f_x / f_x0 )
+    # so
+    # f_x = f_x0 * 10 ** ( -2/5 (m_x - m_x0) )
+    m_x0, f_x0 = 10, 1e3 # arbitrary
+    sfluxs = f_x0 * 10**( -0.4 * (smags - m_x0) )
+    sfluxs /= np.nanmedian(sfluxs)
+
+    if try_to_recover_periodograms:
+        run_asas_periodograms(stimes, smags, serrs)
+
+    if make_lc_plots:
+        plot_asas_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs,
+                     'WASP-18b')
+
+    ####################################################################
+    # fit the lightcurve, show the phased result, get the transit time #
+    ####################################################################
+
+    savstr = 'asas_errs_1d'
+    # use physical parameters from Hellier+ 2009 as fixed parameters
+    plname = 'WASP-18b'
+    period = 0.94145299
+    epoch = 2454221.48163
+    empirical_errs = fit_lightcurve_get_transit_time(stimes, sfluxs, serrs,
+                                                     plname, period, epoch,
+                                                     savstr, n_mcmc_steps=10,
+                                                     overwriteexistingsamples=False)
+
+    # the ASAS errors are good for fitting an initial model to the data, but
+    # they may be over/under-estimates. instead use the "empirical errors",
+    # which are the measured 1-sigma standard deviations of the residual.
+
+    savstr = 'empirical_errs_1d'
+    eerrs = np.ones_like(serrs)*empirical_errs
+
+    _ = fit_lightcurve_get_transit_time(stimes, sfluxs, eerrs, savstr,
+                                        n_mcmc_steps=100,
+                                        overwriteexistingsamples=False)
+
+
+def reduce_all():
+    # options when running
+    make_lc_plots = True
+
+    df = pd.read_csv('../data/asas_all_well-studied_HJs_depthgt1pct_'
+                     'Vlt11_Plt10_manual_points.csv')
+    df = df.drop(columns='System.1')
+
+    sel = (df['asas_N_obs'] > 0)
+
+    print('{:d} HJs from TEPCAT with V<11, P<10day, depth>1%'.format(len(df)))
+    df = df[sel]
+    print('{:d} with >0 ASAS data points'.format(len(df)))
+
+    df['plname'] = nparr(df['System'])+'b'
+    df = df.rename(index=str, columns={
+        'Period(day)':'period', 'T0 (HJD or BJD)':'epoch_HJD_or_BJD'}
+    )
+    c = SkyCoord(nparr(df['asas_query_str']), unit=(u.hourangle, u.deg))
+    df['ra_decimal'] = c.ra.value
+    df['dec_decimal'] = c.dec.value
+
+    lcdir = '../data/ASAS_lightcurves/'
+    df['lcpath'] = lcdir+nparr(df['asas_lc_name'])
+
+    #FIXME: super janky that the epoch is in HJD OR BJD. which is it, for each
+    #case?...
+    df['epoch_is_BJD'] = np.ones_like(list(range(len(df))))
+
+    fit_savdir = '../results/ASAS_lightcurves/'
+    chain_savdir = '/home/luke/local/emcee_chains/'
+    savdir='../results/ASAS_lightcurves/'
+
+    for plname, period, epoch_HJD_or_BJD, ra, dec, lcfile, epoch_is_BJD in list(
+    zip(
+        nparr(df['plname']),
+        nparr(df['period']),
+        nparr(df['epoch_HJD_or_BJD']),
+        nparr(df['ra_decimal']),
+        nparr(df['dec_decimal']),
+        nparr(df['lcpath']),
+        nparr(df['epoch_is_BJD']),
+    )):
+
+        tempdf, dslices = read_ASAS_lightcurve(lcfile)
+        df = wrangle_ASAS_lightcurve(tempdf, dslices, ra, dec)
+
+        times, mags, errs = (nparr(df['BJD_TDB']), nparr(df['SMAG_bestap']),
+                             nparr(df['SERR_bestap']))
+
+        stimes, smags, serrs = sigclip_magseries(times, mags, errs, sigclip=[5,5],
+                                                 magsarefluxes=False)
+
+        if epoch_is_BJD:
+            epoch = epoch_HJD_or_BJD
+        else:
+            raise NotImplementedError #FIXME
+
+        phzd = phase_magseries(stimes, smags, period, epoch, wrap=True, sort=True)
+
+        # convert from mags to relative fluxes for fitting
+        # m_x - m_x0 = -5/2 log10( f_x / f_x0 )
+        # so
+        # f_x = f_x0 * 10 ** ( -2/5 (m_x - m_x0) )
+        m_x0, f_x0 = 10, 1e3 # arbitrary
+        sfluxs = f_x0 * 10**( -0.4 * (smags - m_x0) )
+        sfluxs /= np.nanmedian(sfluxs)
+
+        if make_lc_plots:
+            plot_asas_lcs(times, mags, stimes, smags, phzd, period, epoch,
+                          sfluxs, plname)
+
+
+
+if __name__ == "__main__":
+
+    only_WASP_18b = False
+    do_all = True
+
+    if only_WASP_18b:
+        reduce_WASP_18b()
+
+    if do_all:
+        reduce_all()
