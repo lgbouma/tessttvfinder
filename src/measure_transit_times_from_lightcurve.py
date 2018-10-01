@@ -34,7 +34,7 @@ optional arguments:
 '''
 from __future__ import division, print_function
 
-import os, argparse
+import os, argparse, pickle
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -315,8 +315,10 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                                               sigclip=[15,3],
                                               plotfit=trapfit_savfile)
 
-    # fit Mandel & Agol model to each single transit, +/- 5 transit durations
-    tmids, t_starts, t_ends = get_transit_times(fitd, time, 5)
+    # fit Mandel & Agol model to each single transit, +/- 10 transit durations
+    n_transit_durations = 10
+    tmids, t_starts, t_ends = get_transit_times(fitd, time,
+                                                n_transit_durations)
 
     # get the guess physical parameters from the data
     if getspocparams:
@@ -423,16 +425,24 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                 sel_time, sel_whitened_flux, sel_time, fitfluxs,
                 magsarefluxes=True)
 
-            sigma_tc_theory = estimate_achievable_tmid_precision(snr)
+            # janky estimate of transit duration and ingress duration
+            t_dur_day = (
+                np.max(sel_time[fitfluxs < 1]) - np.min(sel_time[fitfluxs < 1])
+            )
 
-            print('mean fitepoch err: {:.2f}'.format(
+            sigma_tc_theory = estimate_achievable_tmid_precision(
+                snr, t_ingress_min=0.05*t_dur_day*24*60,
+                t_duration_hr=t_dur_day*24)
+
+            print('mean fitepoch err: {:.2e}'.format(
                   np.mean([fitepoch_merr, fitepoch_perr])))
-            print('mean fitepoch err / theory err = {:.2f}'.format(
+            print('mean fitepoch err / theory err = {:.2e}'.format(
                   np.mean([fitepoch_merr, fitepoch_perr]) / sigma_tc_theory))
-            print('mean data error from ASAS = {:.2e}'.format(np.mean(serrs))+
-                  '\nempirical RMS = {:.2e}'.format(empirical_errs))
+            print('mean error from data lightcurve ='+
+                  '{:.2e}'.format(np.mean(sel_err_flux))+
+                  '\nmeasured empirical RMS = {:.2e}'.format(empirical_errs))
 
-            eerrs = np.ones_like(serrs)*empirical_errs
+            empirical_err_flux = np.ones_like(sel_err_flux)*empirical_errs
 
             # THEN: rerun the fit using the empirically determined errors
             # (measured from RMS of the transit-model subtracted lightcurve).
@@ -457,7 +467,7 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
 
             plt.close('all')
             maf_empc_errs = lcfit.mandelagol_fit_magseries(
-                            sel_time, sel_whitened_flux, sel_err_flux,
+                            sel_time, sel_whitened_flux, empirical_err_flux,
                             initfitparams, priorbounds, fixedparams,
                             trueparams=spocparams, magsarefluxes=True,
                             sigclip=[15,3], plotfit=mandelagolfit_savfile,
