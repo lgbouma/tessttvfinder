@@ -49,7 +49,7 @@ from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
 from astrobase.services.tic import tic_single_object_crossmatch
 from astrobase.periodbase import get_snr_of_dip
-from astrobase.varbase import estimate_achievable_tmid_precision
+from astrobase.varbase.transits import estimate_achievable_tmid_precision
 
 np.random.seed(42)
 
