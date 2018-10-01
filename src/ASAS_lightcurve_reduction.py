@@ -23,6 +23,7 @@ from astrobase import periodbase, checkplot
 from astrobase.lcmath import phase_magseries, sigclip_magseries
 from astrobase.varbase import lcfit
 from astrobase.periodbase import get_snr_of_dip
+from astrobase.varbase import estimate_achievable_tmid_precision
 
 from glob import glob
 from parse import parse, search
@@ -336,34 +337,6 @@ def run_asas_periodograms(times, mags, errs):
                                          outfile=outpath, objectinfo=None)
 
 
-def estimate_achievable_tmid_precision(snr):
-    '''
-    From summary of Carter et al. 2009:
-
-    sigma_tc = Q^{-1} * T * sqrt(θ/2)
-
-    Q = SNR of the transit.
-    T = transit duration, which is 2.14 hours from discovery paper.
-    θ = τ/T = ratio of ingress to total duration
-            ~= (few minutes [guess]) / 2.14 hours
-    '''
-
-    t_ingress = 10*u.minute
-    t_duration = 2.14*u.hour # discovery paper
-
-    theta = t_ingress/t_duration
-
-    sigma_tc = (1/snr * t_duration * np.sqrt(theta/2))
-
-    print('assume t_ingress = {:.1f}'.format(t_ingress))
-    print('measured SNR={:.2f}, gives sigma_tc = {:.2e} = {:.2e} = {:.2e}'.
-          format(snr, sigma_tc.to(u.minute), sigma_tc.to(u.hour),
-                 sigma_tc.to(u.day))
-    )
-
-    return sigma_tc.to(u.day).value
-
-
 def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
                                     plname, period, epoch,
                                     n_mcmc_steps=100,
@@ -674,7 +647,7 @@ def reduce_all():
         if epoch_is_BJD:
             epoch = epoch_HJD_or_BJD
         else:
-            raise NotImplementedError #FIXME
+            raise NotImplementedError
 
         phzd = phase_magseries(stimes, smags, period, epoch, wrap=True, sort=True)
 
