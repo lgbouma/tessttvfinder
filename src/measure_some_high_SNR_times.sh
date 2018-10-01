@@ -7,22 +7,29 @@
 
 lcdir='/home/lbouma/local/tess_alert_lightcurves/'
 chain_savdir='/home/lbouma/local/emcee_chains/'
-n_mcmc=10000
-n_workers=16
+n_mcmc=100
+n_workers=10
 
-# WASP 62
+# WASP-46
 python measure_transit_times_from_lightcurve.py \
-  --ticid 149603524 --n_mcmc_steps $n_mcmc \
+  --ticid 231663901 --n_mcmc_steps $n_mcmc \
   --getspocparams \
-  --no-overwritesamples --mcmcprogressbar \
+  --overwritesamples --mcmcprogressbar \
   --nworkers $n_workers --chain_savdir $chain_savdir --lcdir $lcdir &
 
-# WASP 94A
-python measure_transit_times_from_lightcurve.py \
-  --ticid 92352620 --n_mcmc_steps $n_mcmc \
-  --getspocparams \
-  --no-overwritesamples --mcmcprogressbar \
-  --nworkers $n_workers --chain_savdir $chain_savdir --lcdir $lcdir &
+# # WASP-62
+# python measure_transit_times_from_lightcurve.py \
+#   --ticid 149603524 --n_mcmc_steps $n_mcmc \
+#   --getspocparams \
+#   --no-overwritesamples --mcmcprogressbar \
+#   --nworkers $n_workers --chain_savdir $chain_savdir --lcdir $lcdir &
+# 
+# # WASP-94A
+# python measure_transit_times_from_lightcurve.py \
+#   --ticid 92352620 --n_mcmc_steps $n_mcmc \
+#   --getspocparams \
+#   --no-overwritesamples --mcmcprogressbar \
+#   --nworkers $n_workers --chain_savdir $chain_savdir --lcdir $lcdir &
 
 # # struggles to find TIC xmatch. why?
 # # WASP 95
