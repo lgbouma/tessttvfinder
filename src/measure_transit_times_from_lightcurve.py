@@ -48,6 +48,8 @@ from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
 from astrobase.services.tic import tic_single_object_crossmatch
+from astrobase.periodbase import get_snr_of_dip
+from astrobase.varbase import estimate_achievable_tmid_precision
 
 np.random.seed(42)
 
@@ -230,7 +232,7 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                                           overwriteexistingsamples=False,
                                           mcmcprogressbar=False,
                                           nworkers=4,
-                                          chain_savdir='/Users/luke/local/emcee_chains/',
+                                          chain_savdir='/home/luke/local/emcee_chains/',
                                           lcdir=None):
 
     ##########################################
@@ -256,9 +258,9 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
     fit_savdir = '../results/lc_analysis/'
     blsfit_plotname = str(ticid)+'_bls_fit.png'
     trapfit_plotname = str(ticid)+'_trapezoid_fit.png'
-    mandelagolfit_plotname = str(ticid)+'_mandelagol_fit_6d.png'
-    corner_plotname = str(ticid)+'_corner_mandelagol_fit_6d.png'
-    sample_plotname = str(ticid)+'_mandelagol_fit_samples_6d.h5'
+    mandelagolfit_plotname = str(ticid)+'_mandelagol_fit_4d.png'
+    corner_plotname = str(ticid)+'_corner_mandelagol_fit_4d.png'
+    sample_plotname = str(ticid)+'_mandelagol_fit_samples_4d.h5'
 
     blsfit_savfile = fit_savdir + blsfit_plotname
     trapfit_savfile = fit_savdir + trapfit_plotname
@@ -345,36 +347,37 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                              'rp':rp,
                              'sma':a_guess,
                              'incl':85,
-                             'u':[u_linear,u_quad] }
+                            }
 
             fixedparams = {'ecc':0.,
                            'omega':90.,
                            'limb_dark':'quadratic',
-                           'period':fitd['period'] }
+                           'period':fitd['period'],
+                           'u':[u_linear,u_quad]}
 
             priorbounds = {'rp':(rp-0.01, rp+0.01),
-                           'u_linear':(u_linear-1, u_linear+1),
-                           'u_quad':(u_quad-1, u_quad+1),
                            't0':(np.min(sel_time), np.max(sel_time)),
-                           'sma':(0.7*a_guess,1.3*a_guess),
+                           'sma':(0.5*a_guess,1.5*a_guess),
                            'incl':(75,90) }
 
             spocparams = {'rp':spoc_rp,
                           't0':spoc_t0,
-                          'u_linear':u_linear,
-                          'u_quad':u_quad,
                           'sma':spoc_sma,
                           'incl':spoc_incl }
 
+            # FIRST: run the fit using the errors given in the data.
             t_num = str(transit_ix).zfill(3)
             mandelagolfit_plotname = (
-                str(ticid)+'_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+                str(ticid)+
+                '_mandelagol_fit_4d_t{:s}_dataerrs.png'.format(t_num)
             )
             corner_plotname = (
-                str(ticid)+'_corner_mandelagol_fit_6d_t{:s}.png'.format(t_num)
+                str(ticid)+
+                '_corner_mandelagol_fit_4d_t{:s}_dataerrs.png'.format(t_num)
             )
             sample_plotname = (
-                str(ticid)+'_mandelagol_fit_samples_6d_t{:s}.h5'.format(t_num)
+                str(ticid)+
+                '_mandelagol_fit_samples_4d_t{:s}_dataerrs.h5'.format(t_num)
             )
 
             mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
@@ -389,17 +392,90 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
             print('beginning {:s}'.format(samplesavpath))
 
             plt.close('all')
-            mandelagolfit = lcfit.mandelagol_fit_magseries(
+            maf_data_errs = lcfit.mandelagol_fit_magseries(
                             sel_time, sel_whitened_flux, sel_err_flux,
                             initfitparams, priorbounds, fixedparams,
                             trueparams=spocparams, magsarefluxes=True,
                             sigclip=[15,3], plotfit=mandelagolfit_savfile,
                             plotcorner=corner_savfile,
                             samplesavpath=samplesavpath, nworkers=nworkers,
-                            n_mcmc_steps=n_mcmc_steps, eps=1e-1, n_walkers=500,
+                            n_mcmc_steps=n_mcmc_steps, eps=2e-2, n_walkers=500,
                             skipsampling=False,
                             overwriteexistingsamples=overwriteexistingsamples,
                             mcmcprogressbar=mcmcprogressbar)
+
+            maf_savpath = (
+                "../results/tess_lightcurve_fit_parameters/"+str(ticid)+
+                "_mandelagol_fit_dataerrs_t{:s}.pickle".format(t_num)
+            )
+            with open(maf_savpath, 'wb') as f:
+                pickle.dump(maf_data_errs, f, pickle.HIGHEST_PROTOCOL)
+                print('saved {:s}'.format(maf_savpath))
+
+            fitfluxs = maf_data_errs['fitinfo']['fitmags']
+
+            fitepoch = maf_data_errs['fitinfo']['fitepoch']
+            fiterrors = maf_data_errs['fitinfo']['finalparamerrs']
+            fitepoch_perr = fiterrors['std_perrs']['t0']
+            fitepoch_merr = fiterrors['std_merrs']['t0']
+
+            snr, _, empirical_errs = get_snr_of_dip(
+                sel_time, sel_whitened_flux, sel_time, fitfluxs,
+                magsarefluxes=True)
+
+            sigma_tc_theory = estimate_achievable_tmid_precision(snr)
+
+            print('mean fitepoch err: {:.2f}'.format(
+                  np.mean([fitepoch_merr, fitepoch_perr])))
+            print('mean fitepoch err / theory err = {:.2f}'.format(
+                  np.mean([fitepoch_merr, fitepoch_perr]) / sigma_tc_theory))
+            print('mean data error from ASAS = {:.2e}'.format(np.mean(serrs))+
+                  '\nempirical RMS = {:.2e}'.format(empirical_errs))
+
+            eerrs = np.ones_like(serrs)*empirical_errs
+
+            # THEN: rerun the fit using the empirically determined errors
+            # (measured from RMS of the transit-model subtracted lightcurve).
+            mandelagolfit_plotname = (
+                str(ticid)+
+                '_mandelagol_fit_4d_t{:s}_empiricalerrs.png'.format(t_num)
+            )
+            corner_plotname = (
+                str(ticid)+
+                '_corner_mandelagol_fit_4d_t{:s}_empiricalerrs.png'.format(t_num)
+            )
+            sample_plotname = (
+                str(ticid)+
+                '_mandelagol_fit_samples_4d_t{:s}_empiricalerrs.h5'.format(t_num)
+            )
+
+            mandelagolfit_savfile = fit_savdir + mandelagolfit_plotname
+            corner_savfile = fit_savdir + corner_plotname
+            samplesavpath = chain_savdir + sample_plotname
+
+            print('beginning {:s}'.format(samplesavpath))
+
+            plt.close('all')
+            maf_empc_errs = lcfit.mandelagol_fit_magseries(
+                            sel_time, sel_whitened_flux, sel_err_flux,
+                            initfitparams, priorbounds, fixedparams,
+                            trueparams=spocparams, magsarefluxes=True,
+                            sigclip=[15,3], plotfit=mandelagolfit_savfile,
+                            plotcorner=corner_savfile,
+                            samplesavpath=samplesavpath, nworkers=nworkers,
+                            n_mcmc_steps=n_mcmc_steps, eps=2e-2, n_walkers=500,
+                            skipsampling=False,
+                            overwriteexistingsamples=overwriteexistingsamples,
+                            mcmcprogressbar=mcmcprogressbar)
+
+            maf_savpath = (
+                "../results/tess_lightcurve_fit_parameters/"+str(ticid)+
+                "_mandelagol_fit_empiricalerrs_t{:s}.pickle".format(t_num)
+            )
+            with open(maf_savpath, 'wb') as f:
+                pickle.dump(maf_empc_errs, f, pickle.HIGHEST_PROTOCOL)
+                print('saved {:s}'.format(maf_savpath))
+
         except Exception as e:
             print(e)
             print('transit {:d} failed, continue'.format(transit_ix))
