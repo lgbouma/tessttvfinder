@@ -321,7 +321,9 @@ def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
                            outfile=outfile, sigclip=False, phasebin=pb,
                            plotphaselim=[-.6,.6], plotdpi=400)
 
-def run_asas_periodograms(times, mags, errs):
+def run_asas_periodograms(times, mags, errs,
+                          outdir='../results/ASAS_lightcurves/',
+                          outname='WASP-18b_BLS_GLS.png'):
 
     blsdict = kbls.bls_parallel_pfind(times, mags, errs,
                                       magsarefluxes=False, startp=0.5,
@@ -330,8 +332,6 @@ def run_asas_periodograms(times, mags, errs):
     gls = periodbase.pgen_lsp(times, mags, errs, magsarefluxes=False,
                               startp=0.5, endp=1.5, nworkers=8,
                               sigclip=[15,3])
-    outdir = '../results/ASAS_lightcurves/'
-    outname = 'WASP-18b_BLS_GLS.png'
     outpath = outdir+outname
     cpf = checkplot.twolsp_checkplot_png(blsdict, gls, times, mags, errs,
                                          outfile=outpath, objectinfo=None)

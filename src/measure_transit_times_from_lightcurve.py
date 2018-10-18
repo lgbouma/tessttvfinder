@@ -34,7 +34,8 @@ optional arguments:
 '''
 from __future__ import division, print_function
 
-import os, argparse, pickle
+import os, argparse, pickle, h5py
+from glob import glob
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -254,6 +255,14 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
     lcname = 'tess2018206045859-s0001-{:s}-111-s_llc.fits.gz'.format(
                 str(ticid).zfill(16))
     lcfile = lcdir + lcname
+    if not os.path.exists(lcfile):
+        lcfiles = glob(lcdir+'*{:s}*'.format(str(ticid)))
+        if len(lcfiles) == 0:
+            raise AssertionError('could not find lightcurve matching ticid')
+        if len(lcfiles) > 1:
+            raise NotImplementedError
+        if len(lcfiles) == 1:
+            lcfile = lcfiles[0]
 
     fit_savdir = '../results/lc_analysis/'
     blsfit_plotname = str(ticid)+'_bls_fit.png'
@@ -268,8 +277,17 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
     corner_savfile = fit_savdir + corner_plotname
     ##########################################
 
-    time, flux, err_flux = at.get_time_flux_errs_from_Ames_lightcurve(
-                                lcfile, 'PDCSAP')
+    if lcfile.endswith('.fits.gz'):
+        time, flux, err_flux = (
+            at.get_time_flux_errs_from_Ames_lightcurve(lcfile, 'PDCSAP')
+        )
+    elif lcfile.endswith('.h5'):
+        time, flux, err_flux = (
+            at.get_time_flux_errs_from_QLP_lightcurve(lcfile, 'PDCSAP')
+        )
+    else:
+        raise NotImplementedError
+        #FIXME
 
     # get time groups, and median filter each one
     ngroups, groups = lcmath.find_lc_timegroups(time, mingap=mingap)

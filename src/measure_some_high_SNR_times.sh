@@ -5,8 +5,8 @@
 # (note the extra &'s needed to pipe stdout and stderr)
 ##########################################
 
-lcdir='/home/lbouma/local/tess_alert_lightcurves/'
-chain_savdir='/home/lbouma/local/emcee_chains/'
+lcdir='/home/luke/local/tess_alert_lightcurves/'
+chain_savdir='/home/luke/local/emcee_chains/'
 n_mcmc=100
 n_workers=10
 
