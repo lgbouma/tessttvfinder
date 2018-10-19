@@ -169,7 +169,7 @@ def retrieve_measured_times_pickle(
         '{:s}_mandelagol_fit_empiricalerrs_t???.pickle'.
         format(str(ticid))
     )
-    fnames = np.sort(glob(sampledir+fpattern))
+    fnames = np.sort(glob(pickledir+fpattern))
 
     samplepattern = (
         '{:s}_mandelagol_fit_samples_4d_t???_empiricalerrs.h5'.
@@ -181,25 +181,29 @@ def retrieve_measured_times_pickle(
         [],[],[],[],[],[]
     )
 
+    transit_ix = 0
     for fname, samplename in zip(fnames, samplenames):
+        transit_ix += 1
 
-        d = pickle.load(fname)
+        try:
+            d = pickle.load(open(fname, 'rb'))
 
-        fitparams = d['fitinfo']['finalparams']
-        fiterrs = d['fitinfo']['finalparamerrs']
+            fitparams = d['fitinfo']['finalparams']
+            fiterrs = d['fitinfo']['finalparamerrs']
 
-        t0_list.append(fitparams['t0'])
-        t0_merrs.append(fiterrs['std_merrs']['t0'])
-        t0_perrs.append(fiterrs['std_perrs']['t0'])
-        t0_bigerrs.append(max(
-            fiterrs['std_merrs']['t0'],fiterrs['std_perrs']['t0']))
-        samplepaths.append(samplename)
-        picklepaths.append(fname)
+            t0_list.append(fitparams['t0'])
+            t0_merrs.append(fiterrs['std_merrs']['t0'])
+            t0_perrs.append(fiterrs['std_perrs']['t0'])
+            t0_bigerrs.append(max(
+                fiterrs['std_merrs']['t0'],fiterrs['std_perrs']['t0']))
+            samplepaths.append(samplename)
+            picklepaths.append(fname)
 
         except Exception as e:
             print(e)
             print('transit {:d} failed, continue'.format(transit_ix))
             continue
+
 
     t0, t0_merr, t0_perr, t0_bigerr = (
         nparr(t0_list),nparr(t0_merrs),nparr(t0_perrs),nparr(t0_bigerrs)
