@@ -16,7 +16,7 @@ def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
     decay.
     '''
 
-    N_tmids = len(tmid)
+    N_tmids = len(tmid[np.isfinite(tmid)])
     # beware the median average
     if N_tmids % 2 == 1:
         t0 = np.nanmedian(tmid)
