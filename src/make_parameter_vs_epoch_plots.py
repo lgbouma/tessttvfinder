@@ -42,9 +42,13 @@ from ephemerides_utilities import get_ROUGH_epochs_given_midtime_and_period, \
 def arr(x):
     return np.array(x)
 
-def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
-                                        init_t0, overwrite=False,
-                                        savname=None):
+def f_model(xdata, m, b):
+    return m*xdata + b
+
+def scatter_plot_parameter_vs_epoch_manual(
+    df, yparam, datafile, init_period,
+    overwrite=False, savname=None, ylim=None
+):
     '''
     args:
         df -- made by get_ETD_params
@@ -52,170 +56,13 @@ def scatter_plot_parameter_vs_epoch_etd(df, yparam, datafile, init_period,
         datafile -- e.g., "../data/20180826_WASP-18b_ETD.txt"
     '''
 
-    assert yparam in ['O-C', 'Duration', 'Depth']
+    assert yparam == 'O-C'
 
     if not savname:
         savname = (
             '../results/' +
-            datafile.split('/')[-1].split('.txt')[0]+"_"+yparam+"_vs_epoch.pdf"
-        )
-    if os.path.exists(savname) and overwrite==False:
-        print('skipped {:s}'.format(savname))
-        return 0
-
-    f,ax = plt.subplots(figsize=(8,6))
-
-    dq = arr(df['DQ'])
-    xvals = arr(df['Epoch'])
-    if yparam != 'O-C':
-        yvals = arr(df[yparam])
-    elif yparam == 'O-C':
-        # fit a straight line (t vs. E) to all the times. then subtract the
-        # best-fitting line from the data.
-        tmid_HJD = arr(df['HJDmid'])
-        err_tmid_HJD = arr(df['HJDmid Error'])
-
-        sel = np.isfinite(err_tmid_HJD)
-        print('{:d} transits with claimed err_tmid_HJD < 1 minute'.
-              format(len(err_tmid_HJD[err_tmid_HJD*24*60 < 1.])))
-        # sel &= err_tmid_HJD*24*60 > 1.
-        # NOTE: if you claim sub-minute transit time measurements, i don't
-        # believe it....
-
-        xvals = arr(df['Epoch'])[sel]
-        xdata = xvals
-        ydata = tmid_HJD[sel]
-        sigma = err_tmid_HJD[sel]
-
-        if repr(init_t0)[:2] == '24' and repr(tmid_HJD[0])[:2] != '24':
-            init_t0 -= 2400000
-
-        from scipy.optimize import curve_fit
-        def f_model(xdata, m, b):
-            return m*xdata + b
-        popt, pcov = curve_fit(
-            f_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma)
-
-        lsfit_period = popt[0]
-        lsfit_t0 = popt[1]
-
-        assert abs(lsfit_period - init_period) < 1e-4, (
-            'least squares period should be close to given period' )
-
-        calc_tmids = lsfit_period * arr(df['Epoch'])[sel] + lsfit_t0
-
-        # we can now plot "O-C"
-        yvals = tmid_HJD[sel] - calc_tmids
-
-    ymin, ymax = np.nanmean(yvals)-3*np.nanstd(yvals), \
-                 np.nanmean(yvals)+3*np.nanstd(yvals)
-
-    if yparam == 'O-C':
-        yerrkey = 'HJDmid Error'
-        ylabel = 'O-C [d]'
-        yerrs = arr(df[yerrkey])[sel]
-    elif yparam == 'Duration':
-        yerrkey = yparam+' Error'
-        ylabel = 'Duration [min]'
-        yerrs = arr(df[yerrkey])
-    elif yparam == 'Depth':
-        yerrkey = yparam+' Error'
-        ylabel = 'Depth [mmag]'
-        yerrs = arr(df[yerrkey])
-
-    # data points
-    try:
-        ax.scatter(xvals, yvals, marker='o', s=100/(dq**2), zorder=1, c='red')
-    except:
-        import IPython; IPython.embed()
-    # error bars
-    ax.errorbar(xvals, yvals, yerr=yerrs,
-                elinewidth=0.3, ecolor='lightgray', capsize=2, capthick=0.3,
-                linewidth=0, fmt='s', ms=0, zorder=0, alpha=0.75)
-    # text for epoch and planet name
-    pl_name = datafile.split('_')[1]
-    ax.text(.96, .96, pl_name,
-            ha='right', va='top', transform=ax.transAxes, fontsize='small')
-
-    # make vertical lines to roughly show TESS observation window function for
-    # all sectors that this planet is observed in
-    tw = pd.read_csv('../data/tess_sector_time_windows.csv')
-
-    knownplanet_df_files = glob('../data/kane_knownplanets_sector*.csv')
-    if yparam == 'O-C':
-        for knownplanet_df_file in knownplanet_df_files:
-
-            knownplanet_df = pd.read_csv(knownplanet_df_file)
-            # if planet is observed in this sector
-            if np.isin(pl_name.split('b')[0],
-                       arr(knownplanet_df['pl_hostname'])):
-
-                # 0-based sector number count
-                this_sec_num = int(
-                    search('sector{:d}.csv', knownplanet_df_file)[0])
-
-                # 1-based sector number count
-                _ = tw[tw['sector_num'] == this_sec_num+1]
-
-                st = float(_['start_time_HJD'].iloc[0])
-                et = float(_['end_time_HJD'].iloc[0])
-
-                st_epoch = (st - lsfit_t0)/lsfit_period
-                et_epoch = (et - lsfit_t0)/lsfit_period
-
-                ax.axvline(x=st_epoch, c='green', alpha=0.4, lw=0.5)
-                ax.axvline(x=et_epoch, c='green', alpha=0.4, lw=0.5)
-
-                ax.fill([st_epoch, et_epoch, et_epoch, st_epoch],
-                        [ymin, ymin, ymax, ymax],
-                        facecolor='green', alpha=0.2)
-
-                stxt = 'S' + str(this_sec_num+1)
-                ax.text( st_epoch+(et_epoch-st_epoch)/2, ymin+1e-3, stxt,
-                        fontsize='xx-small', ha='center', va='center')
-
-
-    xmin, xmax = min(ax.get_xlim()), max(ax.get_xlim())
-    if yparam == 'O-C':
-        txt = 'M = {:.5f} + {:f} * E'.format(lsfit_t0, lsfit_period)
-        ax.text(.04, .96, txt,
-                ha='left', va='top', transform=ax.transAxes, fontsize='small')
-        # zero line
-        ax.hlines(0, xmin, xmax, alpha=0.3, zorder=-1, lw=0.5)
-
-    ax.set_ylabel(ylabel, fontsize='small')
-    ax.set_xlabel('Epoch Number ({:d} records; times are HJD)'.format(len(df)))
-    ax.set_xlim([xmin, xmax])
-    ax.set_ylim([ymin, ymax])
-
-    # make the legend
-    for _dq in range(1,6):
-        ax.scatter([],[], c='r', s=100/(_dq**2), label='{:d}'.format(_dq))
-    ax.legend(scatterpoints=1, frameon=True, labelspacing=0,
-              title='data quality', loc='lower left', fontsize='xx-small')
-
-
-    f.tight_layout()
-    f.savefig(savname)
-    print('made {:s}'.format(savname))
-
-
-def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
-                                           overwrite=False, savname=None,
-                                           ylim=None):
-    '''
-    args:
-        df -- made by get_ETD_params
-        yparam -- in ['O-C', 'Duration', 'Depth']
-        datafile -- e.g., "../data/20180826_WASP-18b_ETD.txt"
-    '''
-
-    assert yparam in ['O-C']
-
-    if not savname:
-        savname = (
-            '../results/' +
-            datafile.split('/')[-1].split('.txt')[0]+"_"+yparam+"_vs_epoch.pdf"
+            datafile.split('/')[-1].split('.txt')[0] +
+            "_"+yparam+"_vs_epoch.pdf"
         )
     if os.path.exists(savname) and overwrite==False:
         print('skipped {:s}'.format(savname))
@@ -227,7 +74,9 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     # best-fitting line from the data.
     tmid = arr(df['t0_BJD_TDB'])
     err_tmid = arr(df['err_t0'])
-    epoch, init_t0 = get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
+    epoch, init_t0 = (
+        get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
+    )
 
     # include occultation time measurements in fitting for period and t0
     try:
@@ -249,12 +98,15 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
         pass
 
     sel = np.isfinite(err_tmid) & np.isfinite(tmid)
+    sel &= (err_tmid*24*60 < 10) # sub-5 minute precision!
+
+    print('{:d} transits collected'.format(len(err_tmid)))
+
+    print('{:d} transits SELECTED (err_tmid < 10 minute)'.
+          format(len(err_tmid[err_tmid*24*60 < 10.])))
 
     print('{:d} transits with claimed err_tmid < 1 minute'.
-          format(len(err_tmid[err_tmid*24*60 > 1.])))
-    # sel &= err_tmid*24*60 > 1.
-    # NOTE: if you claim sub-minute transit time measurements, i don't
-    # believe it....
+          format(len(err_tmid[err_tmid*24*60 < 1.])))
 
     xvals = epoch[sel]
     xdata = xvals
@@ -262,31 +114,30 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     sigma = err_tmid[sel]
 
     from scipy.optimize import curve_fit
-    def f_model(xdata, m, b):
-        return m*xdata + b
     popt, pcov = curve_fit(
-        f_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma)
+        f_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma
+    )
 
     lsfit_period = popt[0]
     lsfit_t0 = popt[1]
 
     if not abs(lsfit_period - init_period) < 1e-4:
-        print('least squares period is worryingly far from given period')
+        print('WRN! least squares period is worryingly far from given period')
     if not abs(lsfit_period - init_period) < 1e-3:
-        print('least squares period should be close to given period')
+        print('ERR! least squares period should be close to given period')
         import IPython; IPython.embed()
         raise AssertionError
 
     calc_tmids = lsfit_period * epoch[sel] + lsfit_t0
 
     # we can now plot "O-C"
-    yvals = tmid[sel] - calc_tmids
+    yvals = (tmid[sel] - calc_tmids)*24*60
 
     ymin, ymax = np.nanmean(yvals)-3*np.nanstd(yvals), \
                  np.nanmean(yvals)+3*np.nanstd(yvals)
 
     if yparam == 'O-C':
-        yerrs = sigma
+        yerrs = sigma*24*60
 
     # data points
     dq = 1e3*sigma
@@ -316,7 +167,8 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     # all sectors that this planet is observed in
     tw = pd.read_csv('../data/tess_sector_time_windows.csv')
 
-    knownplanet_df_files = glob('../data/kane_knownplanets_sector*.csv')
+    knownplanet_df_files = glob('../data/kane_knownplanet_tess_overlap/'
+                                'kane_knownplanets_sector*.csv')
     if yparam == 'O-C':
         for knownplanet_df_file in knownplanet_df_files:
 
@@ -338,30 +190,35 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
                 st_epoch = (st - lsfit_t0)/lsfit_period
                 et_epoch = (et - lsfit_t0)/lsfit_period
 
-                ax.axvline(x=st_epoch, c='green', alpha=0.4, lw=0.5)
-                ax.axvline(x=et_epoch, c='green', alpha=0.4, lw=0.5)
+                ax.axvline(x=st_epoch, c='green', alpha=0.4, lw=0.5, zorder=-3)
+                ax.axvline(x=et_epoch, c='green', alpha=0.4, lw=0.5, zorder=-3)
 
                 ax.fill([st_epoch, et_epoch, et_epoch, st_epoch],
                         [ymin, ymin, ymax, ymax],
-                        facecolor='green', alpha=0.2)
+                        facecolor='green', alpha=0.2, zorder=-4)
 
                 stxt = 'S' + str(this_sec_num+1)
                 ax.text( st_epoch+(et_epoch-st_epoch)/2, ymin+1e-3, stxt,
-                        fontsize='xx-small', ha='center', va='center')
+                        fontsize='xx-small', ha='center', va='center',
+                        zorder=-2)
 
 
     xmin, xmax = min(ax.get_xlim()), max(ax.get_xlim())
-    if yparam == 'O-C':
-        txt = 'M = {:.5f} + {:f} * E'.format(lsfit_t0, lsfit_period)
-        ax.text(.04, .96, txt,
-                ha='left', va='top', transform=ax.transAxes, fontsize='small')
-        # zero line
-        ax.hlines(0, xmin, xmax, alpha=0.3, zorder=-1, lw=0.5)
 
-    ax.set_ylabel('O-C [d]', fontsize='x-small')
-    ax.set_xlabel('Epoch Number '
-        '({:d} records; tmids are BJD TDB; TESS windows +/-1 day)'.format(
-        len(df)), fontsize='x-small')
+    #
+    # show the plotted linear ephemeris, and the zero-line
+    #
+    txt = 'M = {:.5f} + {:f} * E'.format(lsfit_t0, lsfit_period)
+    ax.text(.04, .96, txt,
+            ha='left', va='top', transform=ax.transAxes, fontsize='small')
+    ax.hlines(0, xmin, xmax, alpha=0.3, zorder=-1, lw=0.5)
+
+    ax.set_ylabel('O-C [minutes]', fontsize='x-small')
+    ax.set_xlabel(
+        'Epoch Number '
+        '({:d} records; tmids are BJD TDB; TESS windows +/-1 day)'
+        .format( len(df)), fontsize='x-small'
+    )
     ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
     if ylim:
@@ -371,8 +228,7 @@ def scatter_plot_parameter_vs_epoch_manual(df, yparam, datafile, init_period,
     for _dq in np.linspace(np.nanmin(dq), np.nanmax(dq), num=6):
         ax.scatter([],[], c='r', s=1/(_dq**2), label='{:.2E}'.format(_dq))
     ax.legend(scatterpoints=1, frameon=True, labelspacing=0,
-              title='err t0 (days)', loc='upper right', fontsize='xx-small')
-
+              title='err t0 [minutes]', loc='upper right', fontsize='xx-small')
 
     f.tight_layout()
     f.savefig(savname, bbox_inches='tight')
@@ -420,7 +276,7 @@ def get_ETD_params(fglob='../data/*_ETD.txt'):
     return d
 
 
-def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
+def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
                                etd_glob='../data/*_ETD.txt',
                                tesstimecsv=None,
                                asastimecsv=None):
@@ -432,7 +288,7 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
     the median time.
 
     args:
-        manual_glob (str): pattern to the manually-curated transit time csv
+        manualtimeglob (str): pattern to the manually-curated transit time csv
         file
 
         tesstimecsv (str): path to the csv of measured TESS transit times
@@ -443,7 +299,7 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
         dict with dataframe, filename, and metadata.
     '''
 
-    man_fnames = glob(manual_glob)
+    man_fnames = glob(manualtimeglob)
     etd_fnames = glob(etd_glob)
 
     d = {}
@@ -484,7 +340,7 @@ def get_manual_and_TESS_ttimes(manual_glob='../data/*_manual.csv',
             tf['comment'] = np.repeat('', len(tf['BJD_TDB']))
             tf.rename(index=str,columns={'BJD_TDB':'t0_BJD_TDB',
                                          't0_bigerr':'err_t0'}, inplace=True)
-            df = pd.concat((df, tf),join='inner')
+            df = pd.concat((df, tf),join='outer')
 
             outname = man_fname.replace('.csv','_and_TESS_times.csv')
             df.to_csv(outname, index=False)
@@ -522,18 +378,31 @@ def make_all_ETD_plots():
             scatter_plot_parameter_vs_epoch(df, yparam, fname, init_period,
                                             init_t0, overwrite=True)
 
-def make_manually_curated_OminusC_plots():
+def make_manually_curated_OminusC_plots(datadir='../data/',
+                                        manualtimeglob=None,
+                                        tesstimeglob=None,
+                                        asastimeglob=None,
+                                        ylim=None):
+    '''
+    make O-C diagrams based on manually-curated times
+    '''
 
-    ##############################################
-    # make plots based on manually-curated times #
-    ##############################################
-    manual_glob = '../data/*WASP-18*_manual.csv'#'../data/*_manual.csv'#'../data/*WASP-46*_manual.csv'
-    tesstimecsv = None #'../data/231663901_measured_TESS_times_18_transits.csv'
-    asastimecsv = '../data/WASP-18b_manual_and_ASAS_times.csv' #None
+    if manualtimeglob:
+        manual_csv = datadir+manualtimeglob
+    else:
+        manual_csv = None
 
-    ylim = [-0.031,0.011] # None
+    if tesstimeglob:
+        tesstimecsv = datadir+tesstimeglob
+    else:
+        tesstimecsv = None
 
-    d = get_manual_and_TESS_ttimes(manual_glob=manual_glob,
+    if asastimeglob:
+        asastimecsv = datadir+asastimeglob
+    else:
+        asastimecsv = None
+
+    d = get_manual_and_TESS_ttimes(manualtimeglob=manual_csv,
                                    tesstimecsv=tesstimecsv,
                                    asastimecsv=asastimecsv)
 
@@ -557,13 +426,36 @@ def make_manually_curated_OminusC_plots():
             yparam + "_vs_epoch.pdf"
         )
 
-        scatter_plot_parameter_vs_epoch_manual(df, yparam, fname, init_period,
-                                               overwrite=True,
-                                               savname=savname,
-                                               ylim=ylim)
+        planetname = os.path.basename(fname).split('_')[0]
+        if 'manual_plus_tess' in savdir:
+            df.to_csv(savdir+planetname+"_manual_plus_tess.csv", index=False)
+            print('saved {:s}'.
+                  format(savdir+planetname+"_manual_plus_tess.csv"))
+        else:
+            raise NotImplementedError('need smarter dataframe namesaving')
+
+        scatter_plot_parameter_vs_epoch_manual(
+            df, yparam, fname, init_period,
+            overwrite=True, savname=savname, ylim=ylim
+        )
 
 if __name__ == '__main__':
 
-    # make_all_ETD_plots()
+    make_all_ETD=0
+    make_manually_curated=1
 
-    make_manually_curated_OminusC_plots()
+    manualtimeglob = 'WASP-18b_manual_and_ASAS_times.csv'
+    tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    asastimeglob = None # 'WASP-18b_manual_and_ASAS_times.csv'
+
+    ylim = None # [-0.031,0.011], for WASP-18b with hipparcos times!
+
+    if make_all_ETD:
+        make_all_ETD_plots()
+
+    if make_manually_curated:
+        make_manually_curated_OminusC_plots(
+            manualtimeglob=manualtimeglob,
+            tesstimeglob=tesstimeglob,
+            asastimeglob=asastimeglob
+        )
