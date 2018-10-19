@@ -52,6 +52,8 @@ from astrobase.services.tic import tic_single_object_crossmatch
 from astrobase.periodbase import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
 
+from astrobase.varbase.transits import get_transit_times
+
 np.random.seed(42)
 
 def get_a_over_Rstar_guess(lcfile, period):
@@ -155,7 +157,7 @@ def get_alerted_params(ticid):
     df = pd.read_csv('../data/toi-plus-2018-09-14.csv', delimiter=',')
     ap = df[df['tic_id']==ticid]
     if not len(ap) == 1:
-        print('should only be one ticid match')
+        print('should be exactly one ticid match')
         import IPython; IPython.embed()
         raise AssertionError
 
@@ -181,32 +183,6 @@ def get_alerted_params(ticid):
     return spoc_b, spoc_sma, spoc_t0, spoc_rp
 
 
-def get_transit_times(fitd, time, N):
-    '''
-    Given a BLS period, epoch, and transit ingress/egress points, compute
-    the times within ~N transit durations of each transit.  This is useful
-    for fitting & inspecting individual transits.
-    '''
-
-    tmids = [fitd['epoch'] + ix*fitd['period'] for ix in range(-1000,1000)]
-    sel = (tmids > np.nanmin(time)) & (tmids < np.nanmax(time))
-    tmids_obsd = np.array(tmids)[sel]
-    if not fitd['transegressbin'] > fitd['transingressbin']:
-        raise AssertionError('careful of the width...')
-    tdur = (
-        fitd['period']*
-        (fitd['transegressbin']-fitd['transingressbin'])/fitd['nphasebins']
-    )
-
-    t_Is = tmids_obsd - tdur/2
-    t_IVs = tmids_obsd + tdur/2
-
-    # focus on the times around transit
-    t_starts = t_Is - N*tdur
-    t_ends = t_Is + N*tdur
-
-    return tmids, t_starts, t_ends
-
 def single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid):
     f, axs = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(8,6))
     axs[0].scatter(time, flux, c='k', alpha=0.5, label='PDCSAP', zorder=1,
@@ -228,13 +204,14 @@ def single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid):
     f.savefig(savdir+savname, dpi=400, bbox_inches='tight')
 
 
-def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
+def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
                                           getspocparams=False,
                                           overwriteexistingsamples=False,
                                           mcmcprogressbar=False,
                                           nworkers=4,
                                           chain_savdir='/home/luke/local/emcee_chains/',
-                                          lcdir=None):
+                                          lcdir=None,
+                                          n_transit_durations=5):
 
     ##########################################
     # detrending parameters. mingap: minimum gap to determine time group size.
@@ -281,13 +258,8 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
         time, flux, err_flux = (
             at.get_time_flux_errs_from_Ames_lightcurve(lcfile, 'PDCSAP')
         )
-    elif lcfile.endswith('.h5'):
-        time, flux, err_flux = (
-            at.get_time_flux_errs_from_QLP_lightcurve(lcfile, 'PDCSAP')
-        )
     else:
         raise NotImplementedError
-        #FIXME
 
     # get time groups, and median filter each one
     ngroups, groups = lcmath.find_lc_timegroups(time, mingap=mingap)
@@ -310,10 +282,10 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
     blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
                                       startp=0.1, endp=endp,
                                       maxtransitduration=0.3, nworkers=8,
-                                      sigclip=[15,3])
+                                      sigclip=None)
     fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
                                        blsdict['bestperiod'],
-                                       magsarefluxes=True, sigclip=[15,3],
+                                       magsarefluxes=True, sigclip=None,
                                        perioddeltapercent=5)
 
     #  plot the BLS model.
@@ -330,13 +302,13 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
     trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
                                               transitparams,
                                               magsarefluxes=True,
-                                              sigclip=[15,3],
+                                              sigclip=None,
                                               plotfit=trapfit_savfile)
 
     # fit Mandel & Agol model to each single transit, +/- 10 transit durations
-    n_transit_durations = 10
     tmids, t_starts, t_ends = get_transit_times(fitd, time,
-                                                n_transit_durations)
+                                                n_transit_durations,
+                                                trapd=trapfit)
 
     # get the guess physical parameters from the data
     if getspocparams:
@@ -361,7 +333,9 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
             u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
             a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
 
-            rp = np.sqrt(fitd['transitdepth'])
+            # trapezoidal fit get more robust transit depth than BLS, for some
+            # reason!
+            rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
 
             initfitparams = {'t0':t_start + (t_end-t_start)/2.,
                              'rp':rp,
@@ -416,7 +390,7 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                             sel_time, sel_whitened_flux, sel_err_flux,
                             initfitparams, priorbounds, fixedparams,
                             trueparams=spocparams, magsarefluxes=True,
-                            sigclip=[15,3], plotfit=mandelagolfit_savfile,
+                            sigclip=None, plotfit=mandelagolfit_savfile,
                             plotcorner=corner_savfile,
                             samplesavpath=samplesavpath, nworkers=nworkers,
                             n_mcmc_steps=n_mcmc_steps, eps=2e-2, n_walkers=500,
@@ -488,7 +462,7 @@ def measure_transit_times_from_lightcurve(ticid, n_mcmc_steps,
                             sel_time, sel_whitened_flux, empirical_err_flux,
                             initfitparams, priorbounds, fixedparams,
                             trueparams=spocparams, magsarefluxes=True,
-                            sigclip=[15,3], plotfit=mandelagolfit_savfile,
+                            sigclip=None, plotfit=mandelagolfit_savfile,
                             plotcorner=corner_savfile,
                             samplesavpath=samplesavpath, nworkers=nworkers,
                             n_mcmc_steps=n_mcmc_steps, eps=2e-2, n_walkers=500,
@@ -522,11 +496,16 @@ if __name__ == '__main__':
               '../data/tess_lightcurves/'
               'tess2018206045859-s0001-{ticid}-111-s_llc.fits.gz'
              ))
+    parser.add_argument('--sectornum', type=int, default=1,
+        help=('string used in sector number (used to glob lightcurves)'))
 
     parser.add_argument('--n_mcmc_steps', type=int, default=None,
         help=('steps to run in MCMC'))
     parser.add_argument('--nworkers', type=int, default=4,
         help=('how many workers?'))
+    parser.add_argument('--n_transit_durations', type=int, default=5,
+        help=('for transit model fitting, how large a time slice around the '
+              'transit do you want to fit? [N*transit_duration]'))
 
     parser.add_argument('--mcmcprogressbar', dest='progressbar',
         action='store_true')
@@ -555,7 +534,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     measure_transit_times_from_lightcurve(
-        args.ticid, args.n_mcmc_steps, getspocparams=args.spocparams,
-        overwriteexistingsamples=args.overwrite,
+        args.ticid, args.sectornum, args.n_mcmc_steps,
+        getspocparams=args.spocparams, overwriteexistingsamples=args.overwrite,
         mcmcprogressbar=args.progressbar,nworkers=args.nworkers,
-        chain_savdir=args.chain_savdir, lcdir=args.lcdir)
+        chain_savdir=args.chain_savdir, lcdir=args.lcdir,
+        n_transit_durations=args.n_transit_durations)
