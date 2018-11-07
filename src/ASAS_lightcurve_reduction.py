@@ -23,7 +23,7 @@ from astrobase import periodbase, checkplot
 from astrobase.lcmath import phase_magseries, sigclip_magseries
 from astrobase.varbase import lcfit
 from astrobase.periodbase import get_snr_of_dip
-from astrobase.varbase import estimate_achievable_tmid_precision
+from astrobase.varbase.transits import estimate_achievable_tmid_precision
 
 from glob import glob
 from parse import parse, search
@@ -117,10 +117,15 @@ def HJD_UTC_to_BJD_TDB_eastman(hjd_arr, ra, dec):
     n_times = len(hjd_arr)
     n_characters_per_time = int(np.mean(list(map(len,hjd_longstr.split(',')))))
 
-    if 2 < n_characters_per_time*n_times < 10000:
-        hjd_strs = [ ','.join(list(map(str,hjd_arr[0:int(n_times/2) ]))),
-                     ','.join(list(map(str,hjd_arr[int(n_times/2):])))
+    if 2 < n_characters_per_time*n_times < 25000:
+        hjd_strs = [ ','.join(list(map(str,hjd_arr[0:int(n_times/4) ]))),
+                     ','.join(list(map(str,hjd_arr[int(n_times/4):int(2*n_times/4)]))),
+                     ','.join(list(map(str,hjd_arr[int(2*n_times/4):int(3*n_times/4)]))),
+                     ','.join(list(map(str,hjd_arr[int(3*n_times/4):]))),
                    ]
+        #hjd_strs = [ ','.join(list(map(str,hjd_arr[0:int(n_times/2) ]))),
+        #             ','.join(list(map(str,hjd_arr[int(n_times/2):])))
+        #           ]
     else:
         raise NotImplementedError('need to generalize code for N queries')
 
@@ -267,13 +272,14 @@ def wrangle_ASAS_lightcurve(df, dslices, ra, dec, min_N_obs=10):
     return df
 
 
-def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
-                  plname, savdir='../results/ASAS_lightcurves/'):
+def plot_old_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
+                 plname, savdir='../results/ASAS_lightcurves/',
+                 telescope='ASAS'):
 
     f,ax=plt.subplots(figsize=(12,6))
     ax.scatter(times, mags)
     ax.set_xlabel('BJD TDB')
-    ax.set_ylabel('ASAS mag (best ap)')
+    ax.set_ylabel('{:s} mag (best ap)'.format(telescope))
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
     f.savefig(savdir+'{:s}_bestap.png'.format(plname), dpi=400)
     plt.close('all')
@@ -281,7 +287,7 @@ def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     f,ax=plt.subplots(figsize=(12,6))
     ax.scatter(stimes, smags)
     ax.set_xlabel('BJD TDB')
-    ax.set_ylabel('sigclipped ASAS mag (best ap)')
+    ax.set_ylabel('sigclipped {:s} mag (best ap)'.format(telescope))
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
     f.savefig(savdir+'{:s}_sigclipped_bestap.png'.format(plname), dpi=400)
     plt.close('all')
@@ -289,7 +295,7 @@ def plot_asas_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     f,ax=plt.subplots(figsize=(12,6))
     ax.scatter(phasedict['phase'], phasedict['mags'])
     ax.set_xlabel('phase')
-    ax.set_ylabel('sigclipped ASAS mag (best ap)')
+    ax.set_ylabel('sigclipped {:s} mag (best ap)'.format(telescope))
     ax.set_ylim([max(ax.get_ylim()), min(ax.get_ylim())])
     ax.set_xlim([-.6,.6])
     f.savefig(savdir+'{:s}_phased_on_TEPCAT_params.png'.format(plname),
@@ -562,7 +568,7 @@ def reduce_WASP_18b():
         run_asas_periodograms(stimes, smags, serrs)
 
     if make_lc_plots:
-        plot_asas_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs,
+        plot_old_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs,
                      'WASP-18b')
 
     ####################################################################
@@ -660,7 +666,7 @@ def reduce_all():
         sfluxs /= np.nanmedian(sfluxs)
 
         if make_lc_plots:
-            plot_asas_lcs(times, mags, stimes, smags, phzd, period, epoch,
+            plot_old_lcs(times, mags, stimes, smags, phzd, period, epoch,
                           sfluxs, plname)
 
 

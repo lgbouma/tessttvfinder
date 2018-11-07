@@ -26,6 +26,8 @@ from astropy.table import Table
 
 if __name__=="__main__":
 
+    Vmagcut = 13
+
     tepcatpath = '../data/TEPCAT_observables.csv'
 
     df = pd.read_csv(tepcatpath, delimiter= ' *, *', engine='python')
@@ -33,7 +35,7 @@ if __name__=="__main__":
     # say we're interested in depths down to 1%
     sel = (df['depth'] >= 1)
     # and we hard-cut V<11
-    sel &= (df['Vmag'] <= 11)
+    sel &= (df['Vmag'] <= Vmagcut)
     # and P < 10 days, in order for the fraction of orbit covered by the
     # transit to be high enough. This throws out HD 80606.
     sel &= (df['Period(day)'] <= 10)
@@ -57,6 +59,9 @@ if __name__=="__main__":
 
     adf['asas_query_str'] = asas_query_str
 
-    savpath = '../data/asas_all_well-studied_HJs_depthgt1pct_Vlt11_Plt10.csv'
+    savpath = (
+        '../data/asas_all_well-studied_HJs_depthgt1pct_Vlt{:d}_Plt10.csv'
+        .format(Vmagcut)
+    )
     adf.to_csv(savpath, index=False)
     print('saved %s' % savpath)
