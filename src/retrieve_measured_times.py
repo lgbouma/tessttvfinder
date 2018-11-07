@@ -161,8 +161,7 @@ def retrieve_measured_times_mcmc(ticid):
 
 def retrieve_measured_times_pickle(
     ticid, pickledir='../results/tess_lightcurve_fit_parameters/',
-    sampledir='/home/luke/local/emcee_chains/'
-):
+    sampledir='/home/luke/local/emcee_chains/'):
 
     # empirical errors -> believable error bars!
     fpattern = (
@@ -235,5 +234,8 @@ if __name__ == "__main__":
              ))
 
     args = parser.parse_args()
+
+    if not args.ticid:
+        raise AssertionError('gotta give a ticid')
 
     retrieve_measured_times_pickle(args.ticid)
