@@ -47,8 +47,8 @@ def f_model(xdata, m, b):
 
 def scatter_plot_parameter_vs_epoch_manual(
     df, yparam, datafile, init_period,
-    overwrite=False, savname=None, ylim=None
-):
+    overwrite=False, savname=None, ylim=None,
+    req_precision_minutes = 10, xlim=None):
     '''
     args:
         df -- made by get_ETD_params
@@ -72,6 +72,8 @@ def scatter_plot_parameter_vs_epoch_manual(
 
     # fit a straight line (t vs. E) to all the times. then subtract the
     # best-fitting line from the data.
+    # TESS midtime errors are taken as the MAXIMUM of (plus error, minus error)
+    # -- see retrieve_measured_times.py.
     tmid = arr(df['t0_BJD_TDB'])
     err_tmid = arr(df['err_t0'])
     epoch, init_t0 = (
@@ -98,12 +100,12 @@ def scatter_plot_parameter_vs_epoch_manual(
         pass
 
     sel = np.isfinite(err_tmid) & np.isfinite(tmid)
-    sel &= (err_tmid*24*60 < 10) # sub-5 minute precision!
+    sel &= (err_tmid*24*60 < req_precision_minutes)
 
     print('{:d} transits collected'.format(len(err_tmid)))
 
-    print('{:d} transits SELECTED (err_tmid < 10 minute)'.
-          format(len(err_tmid[err_tmid*24*60 < 10.])))
+    print('{:d} transits SELECTED (finite & err_tmid < {:d} minute)'.
+          format(len(err_tmid[sel]), req_precision_minutes))
 
     print('{:d} transits with claimed err_tmid < 1 minute'.
           format(len(err_tmid[err_tmid*24*60 < 1.])))
@@ -195,10 +197,10 @@ def scatter_plot_parameter_vs_epoch_manual(
 
                 ax.fill([st_epoch, et_epoch, et_epoch, st_epoch],
                         [ymin, ymin, ymax, ymax],
-                        facecolor='green', alpha=0.2, zorder=-4)
+                        facecolor='green', alpha=0.05, zorder=-4)
 
                 stxt = 'S' + str(this_sec_num+1)
-                ax.text( st_epoch+(et_epoch-st_epoch)/2, ymin+1e-3, stxt,
+                ax.text( st_epoch+(et_epoch-st_epoch)/2, ymin+1e-3*24*60, stxt,
                         fontsize='xx-small', ha='center', va='center',
                         zorder=-2)
 
@@ -219,7 +221,10 @@ def scatter_plot_parameter_vs_epoch_manual(
         '({:d} records; tmids are BJD TDB; TESS windows +/-1 day)'
         .format( len(df)), fontsize='x-small'
     )
-    ax.set_xlim([xmin, xmax])
+    if xlim:
+        ax.set_xlim(xlim)
+    else:
+        ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
     if ylim:
         ax.set_ylim(ylim)
@@ -382,7 +387,10 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
                                         manualtimeglob=None,
                                         tesstimeglob=None,
                                         asastimeglob=None,
-                                        ylim=None):
+                                        ylim=None,
+                                        xlim=None,
+                                        savname=None,
+                                        req_precision_minutes=10):
     '''
     make O-C diagrams based on manually-curated times
     '''
@@ -420,11 +428,14 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
             raise NotImplementedError
         else:
             savdir = '../results/manual_O-C_vs_epoch/'
-        savname = (
-            savdir +
-            fname.split('/')[-1].split('.csv')[0]+"_"+
-            yparam + "_vs_epoch.pdf"
-        )
+        if not savname:
+            savname = (
+                savdir +
+                fname.split('/')[-1].split('.csv')[0]+"_"+
+                yparam + "_vs_epoch.pdf"
+            )
+        else:
+            savname = savdir + savname
 
         planetname = os.path.basename(fname).split('_')[0]
         if 'manual_plus_tess' in savdir:
@@ -436,7 +447,9 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
 
         scatter_plot_parameter_vs_epoch_manual(
             df, yparam, fname, init_period,
-            overwrite=True, savname=savname, ylim=ylim
+            overwrite=True, savname=savname, ylim=ylim,
+            req_precision_minutes = req_precision_minutes,
+            xlim=xlim
         )
 
 if __name__ == '__main__':
@@ -457,5 +470,8 @@ if __name__ == '__main__':
         make_manually_curated_OminusC_plots(
             manualtimeglob=manualtimeglob,
             tesstimeglob=tesstimeglob,
-            asastimeglob=asastimeglob
+            asastimeglob=asastimeglob,
+            ylim=ylim,
+            xlim=xlim,
+            savname=savname
         )
