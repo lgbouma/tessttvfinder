@@ -39,16 +39,63 @@ from parse import parse, search
 from ephemerides_utilities import get_ROUGH_epochs_given_midtime_and_period, \
     get_half_epochs_given_occultation_times
 
+from scipy.optimize import curve_fit
+
 def arr(x):
     return np.array(x)
 
-def f_model(xdata, m, b):
+def linear_model(xdata, m, b):
     return m*xdata + b
+
+def plot_tess_errorbar_check(
+    x, O_minus_C, sigma_y, sigma_y_corrected, period, t0,
+    chi2, dof, chi2_reduced, f, chi2_corrected,
+    chi2_reduced_corrrected,
+    savpath=os.path.join('../results/model_comparison/toy_model',
+                         'data_maxlikelihood_OminusC.png'),
+    xlabel='tess times, epoch', ylabel='deviation from constant period [min]'):
+
+    xfit = np.linspace(np.min(x), np.max(x), 1000)
+
+    fig, (a0,a1) = plt.subplots(nrows=1, ncols=2, figsize=(10,4),
+                                sharey=True)
+
+    a0.errorbar(x, O_minus_C, sigma_y, fmt='ok', ecolor='gray')
+    a0.plot(xfit, np.ones_like(xfit)*0,
+            label='max likelihood linear fit')
+
+    a1.errorbar(x, O_minus_C, sigma_y_corrected, fmt='ok', ecolor='gray')
+    a1.plot(xfit, np.ones_like(xfit)*0,
+            label='max likelihood linear fit')
+
+    txt0 = 'chi2: {:.2f}\ndof: {:d}\nchi2red: {:.2f}'.format(
+        chi2, dof, chi2_reduced)
+    txt1 = (
+        'multiply errors by f={:.2f}\nchi2: {:.2f}\ndof: {:d}\nchi2red: {:.2f}'.
+        format(f, chi2_corrected, dof, chi2_reduced_corrrected)
+    )
+
+    a0.text(0.98, 0.02, txt0, ha='right', va='bottom', transform=a0.transAxes)
+    a1.text(0.98, 0.02, txt1, ha='right', va='bottom', transform=a1.transAxes)
+
+    a1.legend(loc='best', fontsize='x-small')
+    a0.set_xlabel(xlabel)
+    a1.set_xlabel(xlabel)
+    a0.set_ylabel(ylabel)
+
+    for ax in (a0,a1):
+        ax.get_yaxis().set_tick_params(which='both', direction='in')
+        ax.get_xaxis().set_tick_params(which='both', direction='in')
+
+    fig.tight_layout(h_pad=0, w_pad=0)
+    fig.savefig(savpath, bbox_inches='tight', dpi=350)
+    print('made {:s}'.format(savpath))
+
 
 def scatter_plot_parameter_vs_epoch_manual(
     df, yparam, datafile, init_period,
     overwrite=False, savname=None, ylim=None,
-    req_precision_minutes = 10, xlim=None):
+    req_precision_minutes = 10, xlim=None, t0percentile=None):
     '''
     args:
         df -- made by get_ETD_params
@@ -68,21 +115,25 @@ def scatter_plot_parameter_vs_epoch_manual(
         print('skipped {:s}'.format(savname))
         return 0
 
-    f,ax = plt.subplots(figsize=(8,6))
-
     # fit a straight line (t vs. E) to all the times. then subtract the
     # best-fitting line from the data.
     # TESS midtime errors are taken as the MAXIMUM of (plus error, minus error)
     # -- see retrieve_measured_times.py.
     tmid = arr(df['t0_BJD_TDB'])
     err_tmid = arr(df['err_t0'])
+
+    sel = np.isfinite(err_tmid) & np.isfinite(tmid)
+    sel &= (err_tmid*24*60 < req_precision_minutes)
+
     epoch, init_t0 = (
-        get_ROUGH_epochs_given_midtime_and_period(tmid, init_period)
+        get_ROUGH_epochs_given_midtime_and_period(
+            tmid[sel], init_period, t0percentile=t0percentile)
     )
 
     # include occultation time measurements in fitting for period and t0
     try:
         if np.any(arr(df['tsec_BJD_TDB'])):
+            raise NotImplementedError('need to fix this to work with "sel"')
 
             tsec = arr(df['tsec_BJD_TDB'])
             err_tsec = arr(df['err_tsec'])
@@ -99,9 +150,6 @@ def scatter_plot_parameter_vs_epoch_manual(
     except KeyError:
         pass
 
-    sel = np.isfinite(err_tmid) & np.isfinite(tmid)
-    sel &= (err_tmid*24*60 < req_precision_minutes)
-
     print('{:d} transits collected'.format(len(err_tmid)))
 
     print('{:d} transits SELECTED (finite & err_tmid < {:d} minute)'.
@@ -110,14 +158,105 @@ def scatter_plot_parameter_vs_epoch_manual(
     print('{:d} transits with claimed err_tmid < 1 minute'.
           format(len(err_tmid[err_tmid*24*60 < 1.])))
 
-    xvals = epoch[sel]
+    xvals = epoch
     xdata = xvals
     ydata = tmid[sel]
     sigma = err_tmid[sel]
+    sel_references = np.array(df['reference'])[sel]
 
-    from scipy.optimize import curve_fit
+    # do the TESS error bars make sense? in particular, for TESS times
+    # only, is chi^2_reduced ~= 1? if not, maybe over-estimating
+    # uncertainties!
+    # -> correct them so that chi^2_reduced = 1...
+    if np.any(np.array(df['reference']) == 'me'):
+
+        sel_tess = sel & (np.array(df['reference']) == 'me')
+
+        xdata_tess = epoch[sel_references == 'me']
+        xdata_tess -= np.sort(xdata_tess)[int(len(xdata_tess)/2)]
+        ydata_tess = tmid[sel_tess]
+        sigma_tess = err_tmid[sel_tess]
+
+        popt_tess, pcov_tess = curve_fit(
+            linear_model, xdata_tess, ydata_tess,
+            p0=(init_period, init_t0),
+            sigma=sigma_tess
+        )
+
+        lsfit_period_tess = popt_tess[0]
+        lsfit_t0_tess = popt_tess[1]
+
+        calc_tmids_tess = lsfit_period_tess * xdata_tess + lsfit_t0_tess
+
+        O_minus_C_tess = tmid[sel_tess] - calc_tmids_tess
+
+        chi2 = np.sum( O_minus_C_tess**2 / sigma_tess**2 )
+        n_data, n_parameters = len(xdata_tess), 2
+        dof = n_data - n_parameters
+
+        chi2_reduced = chi2/dof
+
+        # propose the empirical correction. `f` for fudge.
+        f = np.sqrt(chi2/dof)
+
+        sigma_tess_corrected = sigma_tess * f
+        chi2_corrected = np.sum(O_minus_C_tess**2 /
+                                sigma_tess_corrected**2 )
+        chi2_reduced_corrrected = chi2_corrected/dof
+
+        plname = os.path.basename(savname).split("_")[0]
+        tesscheckpath = (
+            os.path.join('../results/manual_plus_tess_O-C_vs_epoch',
+            plname+"_tess_errorbar_check.png"
+        ))
+
+        plot_tess_errorbar_check(
+            xdata_tess, O_minus_C_tess*24*60, sigma_tess*24*60,
+            sigma_tess_corrected*24*60,
+            lsfit_period_tess, lsfit_t0_tess, chi2, dof, chi2_reduced,
+            f, chi2_corrected, chi2_reduced_corrrected,
+            savpath=tesscheckpath)
+
+        # finally, update the errors to be used in the analysis!
+        # NOTE: this assumes the TESS measurements are always being
+        # appended at the end!
+        print('WRN! ERROR BARS BEFORE EMPIRICAL CORRECTION')
+        print(sigma)
+        sigma_not_tess = sigma[~(sel_references == 'me')]
+        sigma = np.concatenate((sigma_not_tess, sigma_tess_corrected))
+        print('WRN! ERROR BARS AFTER EMPIRICAL CORRECTION')
+        print(sigma)
+
+
+    t0_offset = int(np.round(np.nanmedian(ydata), -3))
+    savdf = pd.DataFrame(
+        {'sel_epoch': xdata,
+         'sel_transit_times_BJD_TDB_minus_{:d}_minutes'.format(t0_offset): (
+             ydata-t0_offset)*24*60,
+         'sel_transit_times_BJD_TDB': ydata,
+         'err_sel_transit_times_BJD_TDB': sigma,
+         'err_sel_transit_times_BJD_TDB_minutes': (sigma)*24*60,
+         'original_reference': np.array(df['reference'])[sel],
+         'where_I_got_time': np.array(df['where_I_got_time'])[sel],
+        }
+    )
+
+    savdf = savdf.sort_values(by='sel_epoch')
+    savdf = savdf[['sel_epoch',
+                   'sel_transit_times_BJD_TDB_minus_{:d}_minutes'.format(t0_offset),
+                   'sel_transit_times_BJD_TDB',
+                   'err_sel_transit_times_BJD_TDB',
+                   'err_sel_transit_times_BJD_TDB_minutes',
+                   'original_reference',
+                   'where_I_got_time']]
+
+    savdfpath = (os.path.join( '../data/', os.path.basename(
+        savname.replace('.png', '_selected.csv'))))
+    savdf.to_csv(savdfpath, sep=';', index=False)
+    print('saved {:s}'.format(savdfpath))
+
     popt, pcov = curve_fit(
-        f_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma
+        linear_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma
     )
 
     lsfit_period = popt[0]
@@ -130,7 +269,7 @@ def scatter_plot_parameter_vs_epoch_manual(
         import IPython; IPython.embed()
         raise AssertionError
 
-    calc_tmids = lsfit_period * epoch[sel] + lsfit_t0
+    calc_tmids = lsfit_period * epoch + lsfit_t0
 
     # we can now plot "O-C"
     yvals = (tmid[sel] - calc_tmids)*24*60
@@ -141,6 +280,8 @@ def scatter_plot_parameter_vs_epoch_manual(
     if yparam == 'O-C':
         yerrs = sigma*24*60
 
+    plt.close('all')
+    f,ax = plt.subplots(figsize=(8,6))
     # data points
     dq = 1e3*sigma
     ax.scatter(xvals, yvals, marker='o', s=1/(dq**2), zorder=1, c='red')
@@ -267,7 +408,7 @@ def get_ETD_params(fglob='../data/*_ETD.txt'):
 
         # read in the data table
         df = pd.read_csv(fname,
-                         delimiter=';',
+                         sep=';',
                          comment=None,
                          engine='python',
                          skiprows=4
@@ -332,7 +473,7 @@ def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
         init_period = search('Per = {:f}', pline[0])[0]
 
         # read in the manually curated data table
-        df = pd.read_csv(man_fname, delimiter=';', comment=None)
+        df = pd.read_csv(man_fname, sep=';', comment=None)
 
         if tesstimecsv:
             tf = pd.read_csv(tesstimecsv)
@@ -348,12 +489,12 @@ def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
             df = pd.concat((df, tf),join='outer')
 
             outname = man_fname.replace('.csv','_and_TESS_times.csv')
-            df.to_csv(outname, index=False)
+            df.to_csv(outname, index=False, sep=';')
             print('saved {:s}'.format(outname))
 
         if asastimecsv:
             # manually curated with extra ASAS time
-            at = pd.read_csv(asastimecsv, delimiter=';', comment=None)
+            at = pd.read_csv(asastimecsv, sep=';', comment=None)
             df = at
 
         # set t0 as the median time
@@ -390,7 +531,8 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
                                         ylim=None,
                                         xlim=None,
                                         savname=None,
-                                        req_precision_minutes=10):
+                                        req_precision_minutes=10,
+                                        t0percentile=None):
     '''
     make O-C diagrams based on manually-curated times
     '''
@@ -439,7 +581,8 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
 
         planetname = os.path.basename(fname).split('_')[0]
         if 'manual_plus_tess' in savdir:
-            df.to_csv(savdir+planetname+"_manual_plus_tess.csv", index=False)
+            df.to_csv(savdir+planetname+"_manual_plus_tess.csv", index=False,
+                      sep=';')
             print('saved {:s}'.
                   format(savdir+planetname+"_manual_plus_tess.csv"))
         else:
@@ -449,7 +592,7 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
             df, yparam, fname, init_period,
             overwrite=True, savname=savname, ylim=ylim,
             req_precision_minutes = req_precision_minutes,
-            xlim=xlim
+            xlim=xlim, t0percentile=t0percentile
         )
 
 if __name__ == '__main__':
@@ -473,5 +616,7 @@ if __name__ == '__main__':
             asastimeglob=asastimeglob,
             ylim=ylim,
             xlim=xlim,
-            savname=savname
+            savname=savname,
+            req_precision_minutes=req_precision_minutes,
+            t0percentile=t0percentile
         )
