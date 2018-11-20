@@ -5,30 +5,15 @@ Functions here are named:
 '''
 import numpy as np
 
-def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period):
-    '''
-    tmid = period*epoch + t0.
+from astrobase.timeutils import get_epochs_given_midtimes_and_period
 
-    this function returns APPROXIMATE epochs that are NOT FIT FOR PUBLICATION.
-    they are forced INT-type epochs.
+def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period,
+                                              t0percentile=None):
 
-    they are therefore fit for a rough assessment on an O-C diagram of orbital
-    decay.
-    '''
-
-    N_tmids = len(tmid[np.isfinite(tmid)])
-    # beware the median average
-    if N_tmids % 2 == 1:
-        t0 = np.nanmedian(tmid)
-    else:
-        t0 = tmid[int(N_tmids/2)]
-
-    epoch = (tmid - t0)/init_period
-
-    # do not convert numpy entries to ints, because np.nan is float type
-    int_epoch = np.round(epoch,0)
-
-    return int_epoch, t0
+    epoch, t0 = get_epochs_given_midtimes_and_period(tmid, init_period,
+                                                     t0_percentile=t0percentile,
+                                                     verbose=True)
+    return epoch, t0
 
 
 def get_half_epochs_given_occultation_times(tsec, init_period, t0):
