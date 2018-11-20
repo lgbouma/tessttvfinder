@@ -10,3 +10,5 @@ results/lc_analysis/*png
 results/ASAS_lightcurves/*png
 results/tess_lightcurve_fit_parameters/
 results/lc_analysis/231*png
+results/manual_plus_tess_O-C_vs_epoch/*png
+results/manual_plus_tess_O-C_vs_epoch/*csv
