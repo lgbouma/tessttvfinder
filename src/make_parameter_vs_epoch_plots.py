@@ -30,14 +30,15 @@ from astropy.table import Table
 from astropy.io import ascii
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+from astropy import constants
 
 from glob import glob
 import os
 
 from parse import parse, search
 
-from ephemerides_utilities import get_ROUGH_epochs_given_midtime_and_period, \
-    get_half_epochs_given_occultation_times
+from astrobase.timeutils import get_epochs_given_midtimes_and_period
+from ephemerides_utilities import get_half_epochs_given_occultation_times
 
 from scipy.optimize import curve_fit
 
@@ -93,9 +94,11 @@ def plot_tess_errorbar_check(
 
 
 def scatter_plot_parameter_vs_epoch_manual(
+    plname,
     df, yparam, datafile, init_period,
     overwrite=False, savname=None, ylim=None,
-    req_precision_minutes = 10, xlim=None, t0percentile=None):
+    req_precision_minutes = 10, xlim=None,
+    occultationtimeglob=None):
     '''
     args:
         df -- made by get_ETD_params
@@ -125,30 +128,52 @@ def scatter_plot_parameter_vs_epoch_manual(
     sel = np.isfinite(err_tmid) & np.isfinite(tmid)
     sel &= (err_tmid*24*60 < req_precision_minutes)
 
-    epoch, init_t0 = (
-        get_ROUGH_epochs_given_midtime_and_period(
-            tmid[sel], init_period, t0percentile=t0percentile)
+    epoch, init_t0 = get_epochs_given_midtimes_and_period(
+        tmid[sel], init_period, err_t_mid = err_tmid[sel], verbose=True
     )
 
-    # include occultation time measurements in fitting for period and t0
-    try:
-        if np.any(arr(df['tsec_BJD_TDB'])):
-            raise NotImplementedError('need to fix this to work with "sel"')
+    # calculate epochs for occultation time measurements, so they can be used
+    # in model comparison. (don't use them for determining least squares t0 or
+    # period, because they are usually rattier).
+    if isinstance(occultationtimeglob, str):
+        occ_file = os.path.join('../data/',occultationtimeglob)
+    else:
+        occ_file = None
+    if occ_file:
+        print('\n----WRN!! WORKING WITH OCCULTATION TIMES----\n')
+        # tmid = t0 + P*E
+        # tocc = t0 + P*E + P/2
+        occ_df = pd.read_csv(occ_file, sep=';', comment=None)
+        t_occ_no_ltt = np.array(occ_df['tocc_BJD_TDB_no_ltt'])
+        err_t_occ = np.array(occ_df['err_tocc'])
 
-            tsec = arr(df['tsec_BJD_TDB'])
-            err_tsec = arr(df['err_tsec'])
+        if plname=='WASP-4b':
+            semimaj = 0.0228*u.au # Petrucci+ 2013, table 3
+            ltt_corr = (2*semimaj/constants.c).to(u.second)
+        else:
+            raise NotImplementedError
 
-            sec_epochs = get_half_epochs_given_occultation_times(
-                tsec, init_period, init_t0)
+        print('subtracting {:.3f} for occultation light travel time'.
+              format(ltt_corr))
 
-            f_sec_epochs = np.isfinite(sec_epochs)
+        t_occ_corrected = t_occ_no_ltt - (ltt_corr.to(u.day)).value
 
-            tmid = np.concatenate((tmid, tsec[f_sec_epochs]))
-            err_tmid = np.concatenate((err_tmid, err_tsec[f_sec_epochs]))
-            epoch = np.concatenate((epoch, sec_epochs[f_sec_epochs]))
+        occ_epoch_full = (t_occ_corrected - init_t0 - init_period/2) / init_period
 
-    except KeyError:
-        pass
+        occ_epoch = np.round(occ_epoch_full, 1)
+
+        print('got occultation epochs')
+        print(occ_epoch_full)
+
+        f_occ_epochs = np.isfinite(occ_epoch)
+
+        tocc = t_occ_corrected[f_occ_epochs]
+        err_tocc = err_t_occ[f_occ_epochs]
+        occ_references = np.array(occ_df['reference'])[f_occ_epochs]
+        occ_whereigot = np.array(occ_df['where_I_got_time'])[f_occ_epochs]
+
+    else:
+        print('\n----NOT WORKING WITH OCCULTATION TIMES----\n')
 
     print('{:d} transits collected'.format(len(err_tmid)))
 
@@ -254,6 +279,33 @@ def scatter_plot_parameter_vs_epoch_manual(
         savname.replace('.png', '_selected.csv'))))
     savdf.to_csv(savdfpath, sep=';', index=False)
     print('saved {:s}'.format(savdfpath))
+
+    if occ_file:
+
+        occ_savdf = pd.DataFrame(
+            {'sel_epoch': occ_epoch[f_occ_epochs],
+             'sel_occ_times_BJD_TDB_minus_{:d}_minutes'.format(t0_offset): (
+                 tocc-t0_offset)*24*60,
+             'sel_occ_times_BJD_TDB': tocc,
+             'err_sel_occ_times_BJD_TDB': err_tocc,
+             'err_sel_occ_times_BJD_TDB_minutes': (err_tocc)*24*60,
+             'original_reference': occ_references,
+             'where_I_got_time': occ_whereigot,
+            }
+        )
+
+        occ_savdf = occ_savdf.sort_values(by='sel_epoch')
+        occ_savdf = occ_savdf[['sel_epoch',
+                               'sel_occ_times_BJD_TDB_minus_{:d}_minutes'.format(t0_offset),
+                               'sel_occ_times_BJD_TDB',
+                               'err_sel_occ_times_BJD_TDB',
+                               'err_sel_occ_times_BJD_TDB_minutes',
+                               'original_reference',
+                               'where_I_got_time']]
+
+        occ_savdfpath = '../data/{:s}_occultation_times_selected.csv'.format(plname)
+        occ_savdf.to_csv(occ_savdfpath, sep=';', index=False)
+        print('saved {:s}'.format(occ_savdfpath))
 
     popt, pcov = curve_fit(
         linear_model, xdata, ydata, p0=(init_period, init_t0), sigma=sigma
@@ -446,7 +498,11 @@ def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
     '''
 
     man_fnames = glob(manualtimeglob)
+    if len(man_fnames) < 1:
+        raise AssertionError('did not find manual time file names')
     etd_fnames = glob(etd_glob)
+    if len(etd_fnames) < 1:
+        raise AssertionError('did not find etd files')
 
     d = {}
     for k in ['fname','init_period','df', 'init_t0','etd_fname']:
@@ -528,11 +584,12 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
                                         manualtimeglob=None,
                                         tesstimeglob=None,
                                         asastimeglob=None,
+                                        occultationtimeglob=None,
                                         ylim=None,
                                         xlim=None,
                                         savname=None,
-                                        req_precision_minutes=10,
-                                        t0percentile=None):
+                                        req_precision_minutes=10
+                                        ):
     '''
     make O-C diagrams based on manually-curated times
     '''
@@ -589,10 +646,10 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
             raise NotImplementedError('need smarter dataframe namesaving')
 
         scatter_plot_parameter_vs_epoch_manual(
-            df, yparam, fname, init_period,
-            overwrite=True, savname=savname, ylim=ylim,
-            req_precision_minutes = req_precision_minutes,
-            xlim=xlim, t0percentile=t0percentile
+            plname,
+            df, yparam, fname, init_period, overwrite=True, savname=savname,
+            ylim=ylim, req_precision_minutes = req_precision_minutes,
+            xlim=xlim, occultationtimeglob=occultationtimeglob
         )
 
 if __name__ == '__main__':
@@ -614,9 +671,9 @@ if __name__ == '__main__':
             manualtimeglob=manualtimeglob,
             tesstimeglob=tesstimeglob,
             asastimeglob=asastimeglob,
+            occultationtimeglob=occultationtimeglob,
             ylim=ylim,
             xlim=xlim,
             savname=savname,
-            req_precision_minutes=req_precision_minutes,
-            t0percentile=t0percentile
+            req_precision_minutes=req_precision_minutes
         )
