@@ -7,15 +7,6 @@ import numpy as np
 
 from astrobase.timeutils import get_epochs_given_midtimes_and_period
 
-def get_ROUGH_epochs_given_midtime_and_period(tmid, init_period,
-                                              t0percentile=None):
-
-    epoch, t0 = get_epochs_given_midtimes_and_period(tmid, init_period,
-                                                     t0_percentile=t0percentile,
-                                                     verbose=True)
-    return epoch, t0
-
-
 def get_half_epochs_given_occultation_times(tsec, init_period, t0):
     '''
     assume zero eccentricity. then
