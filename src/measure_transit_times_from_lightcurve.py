@@ -698,10 +698,17 @@ def fit_transit_mandelagol_and_line(
         int(np.floor(((t_dur_day*u.day)/per_point_cadence).cgs.value))
     )
 
+    # get in-transit indices, so that rms can be measured of the residual _in
+    # transit_, rather than for the full timeseries.
+    post_ingress = ( (fitepoch - timeoffset) - t_dur_day/2 < sel_time )
+    pre_egress = ( sel_time < (fitepoch - timeoffset) + t_dur_day/2  )
+    indsintransit = post_ingress & pre_egress
+
     snr, _, empirical_errs = get_snr_of_dip(
         sel_time, sel_flux, sel_time, fitfluxs,
         magsarefluxes=True, atol_normalization=1e-2,
-        transitdepth=k**2, npoints_in_transit=npoints_in_transit)
+        transitdepth=k**2, npoints_in_transit=npoints_in_transit,
+        indsintransit=indsintransit)
 
     sigma_tc_theory = estimate_achievable_tmid_precision(
         snr, t_ingress_min=0.05*t_dur_day*24*60,
