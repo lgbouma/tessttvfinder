@@ -291,10 +291,11 @@ def retrieve_no_whitening(lcfile, make_diagnostic_plots=True, orbitgap=1.,
     '''
 
     # Step 0. Retrieve the lightcurve. Do nothing else to it.
-    if lcfile.endswith('.fits.gz'):
+    if lcfile.endswith('.fits'):
         lcd = at.read_tess_fitslc(lcfile, normalize=False)
     else:
-        raise NotImplementedError
+        raise NotImplementedError('expected .fits files, got {:s}'.
+                                  format(lcfile))
 
     step0_time = lcd['time']
     step0_flux = lcd['pdc']['pdcsap_flux']
@@ -777,10 +778,17 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
     ##########################################
 
     # paths for reading and writing plots
+    lcname = ('hlsp_tess-data-alerts_tess_phot_{:s}-s{:s}_tess_v1_lc.fits'.
+              format(str(ticid).zfill(11), str(sectornum).zfill(2))
+             )
+
     if not lcdir:
         raise AssertionError('input directory to find lightcurves')
-    lcname = 'tess2018206045859-s{:s}-{:s}-111-s_llc.fits.gz'.format(
-                str(sectornum).zfill(4),str(ticid).zfill(16))
+
+    #NOTE: old. final 0121 string tied to sector number.
+    # lcname = 'tess2018206045859-s{:s}-{:s}-0121-s_lc.fits.gz'.format(
+    #             str(sectornum).zfill(4),str(ticid).zfill(16))
+
     lcfile = lcdir + lcname
     if not os.path.exists(lcfile):
         lcfiles = glob(lcdir+'*{:s}*'.format(str(ticid)))
