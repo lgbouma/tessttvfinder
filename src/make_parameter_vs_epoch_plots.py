@@ -518,6 +518,9 @@ def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
 
     int_man_fnames = np.sort(arr(man_fnames)[gd_man_names])
     int_etd_fnames = np.sort(arr(etd_fnames)[gd_etd_names])
+    if len(int_etd_fnames) < 1:
+        raise AssertionError(
+            'didnt find etd files. make e.g. ../data/20180826_WASP-4b_ETD.txt')
 
     for man_fname, etd_fname in list(zip(int_man_fnames, int_etd_fnames)):
 
@@ -657,11 +660,96 @@ if __name__ == '__main__':
     make_all_ETD=0
     make_manually_curated=1
 
-    manualtimeglob = 'WASP-18b_manual_and_ASAS_times.csv'
-    tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
-    asastimeglob = None # 'WASP-18b_manual_and_ASAS_times.csv'
+    occultationtimeglob = None
+    asastimeglob = None
+    ylim, xlim = None, None
+    req_precision_minutes = 5
 
-    ylim = None # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # # WASP-45b
+    # plname = 'WASP-45b'
+    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '120610833_measured_TESS_times_9_transits.csv'
+
+    # # WASP-6b
+    # plname = 'WASP-6b'
+    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '204376737_measured_TESS_times_8_transits.csv'
+
+    # # WASP-29b
+    # plname = 'WASP-29b'
+    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '183537452_measured_TESS_times_7_transits.csv'
+
+    # # WASP-5b
+    # plname = 'WASP-5b'
+    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '184240683_measured_TESS_times_16_transits.csv'
+    # req_precision_minutes = 30
+
+    # # WASP-4b with secondaries
+    # manualtimeglob = 'WASP-4b_manual_with_secondaries.csv'
+    # tesstimeglob = '402026209_measured_TESS_times_18_transits.csv'
+    # savname = 'WASP-4b_transits_and_secondaries_and_TESS_times_O-C_vs_epoch.png'
+    # req_precision_minutes = 10
+
+    # # WASP-4b TESS only
+    # manualtimeglob = 'WASP-4b_manual.csv'
+    # tesstimeglob = '402026209_measured_TESS_times_18_transits.csv'
+    # savname = 'WASP-4b_TESS_times_O-C_vs_epoch.png'
+    # ylim = None # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = [2420,2480]
+
+    # WASP-4b
+    plname = 'WASP-4b'
+    manualtimeglob = '{:s}_manual.csv'.format(plname)
+    occultationtimeglob = '{:s}_manual_occultations.csv'.format(plname)
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
+    req_precision_minutes = 1 # get a junky one otherwise!
+
+    # # WASP-18b just TESS times... do you see nice TTVs?
+    # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # savname = 'WASP-18b_TESS_times_O-C_vs_epoch.png'
+    # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = [-20,60]
+    # req_precision_minutes = 30
+
+    # # WASP-18b, with ASAS and hipparcos point.
+    # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # savname = 'WASP-18b_all_times_O-C_vs_epoch.png'
+    # ylim = [-30,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = None
+    # req_precision_minutes = 30
+
+    # # WASP-18b, with ASAS point.
+    # manualtimeglob = 'WASP-18b_manual_and_ASAS_times.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # savname = 'WASP-18b_manual_and_ASAS_times_O-C_vs_epoch.png'
+    # ylim = [-3,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = None
+    # req_precision_minutes = 10
+
+    # # WASP-18b, no ASAS or Hipparcos point.
+    # plname = 'WASP-18b'
+    # manualtimeglob = '{:s}_manual_no_hipparcos.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # asastimeglob = None # 'WASP-18b_manual_and_ASAS_times.csv'
+    # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = None
+    # req_precision_minutes = 10
+
+    # # WASP-46b
+    # plname = 'WASP-46b'
+    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimeglob = '231663901_measured_TESS_times_18_transits.csv'
 
     if make_all_ETD:
         make_all_ETD_plots()
