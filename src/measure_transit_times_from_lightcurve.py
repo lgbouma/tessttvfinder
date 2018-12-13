@@ -54,6 +54,7 @@ from astrobase import lcmath
 from astrobase.services.tic import tic_single_object_crossmatch
 from astrobase.varbase.transits import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
+from astrobase.plotbase import plot_phased_mag_series
 
 from astrobase.varbase.transits import get_transit_times
 
@@ -349,8 +350,8 @@ def retrieve_no_whitening(lcfile, make_diagnostic_plots=True, orbitgap=1.,
                                                mingap=dump_interval)
 
     if ndumps != expected_ndumps:
-        raise AssertionError(
-            'expected {:d} dumps, got {:d} dumps'.
+        print(
+            'WRN!: expected {:d} dumps, got {:d} dumps'.
             format(expected_ndumps, ndumps))
 
     masked_times = []
@@ -508,10 +509,17 @@ def fit_transit_mandelagol_only(transit_ix, t_start, t_end, time,
                     overwriteexistingsamples=overwriteexistingsamples,
                     mcmcprogressbar=mcmcprogressbar)
 
+    fitparamdir = "../results/tess_lightcurve_fit_parameters/"+str(ticid)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
+    fitparamdir = fitparamdir+'/'+'sector_{:d}'.format(sectornum)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
     maf_savpath = (
-        "../results/tess_lightcurve_fit_parameters/"+str(ticid)+
-        "_mandelagol_fit_dataerrs_t{:s}.pickle".format(t_num)
-    )
+        os.path.join(
+            fitparamdir,
+            str(ticid)+ "_mandelagol_fit_dataerrs_t{:s}.pickle".format(t_num)
+    ) )
     with open(maf_savpath, 'wb') as f:
         pickle.dump(maf_data_errs, f, pickle.HIGHEST_PROTOCOL)
         print('saved {:s}'.format(maf_savpath))
@@ -581,23 +589,32 @@ def fit_transit_mandelagol_only(transit_ix, t_start, t_end, time,
                     mcmcprogressbar=mcmcprogressbar)
 
     maf_savpath = (
-        "../results/tess_lightcurve_fit_parameters/"+str(ticid)+
-        "_mandelagol_fit_empiricalerrs_t{:s}.pickle".format(t_num)
-    )
+        os.path.join(
+            fitparamdir,
+            str(ticid)+ "_mandelagol_fit_empiricalerrs_t{:s}.pickle".format(t_num)
+    ) )
+
     with open(maf_savpath, 'wb') as f:
         pickle.dump(maf_empc_errs, f, pickle.HIGHEST_PROTOCOL)
         print('saved {:s}'.format(maf_savpath))
 
 
 def fit_transit_mandelagol_and_line(
+    sectornum,
     transit_ix, t_start, t_end, time, flux, err_flux, lcfile, fitd,
     trapfit, litparams, ticid, fit_savdir, chain_savdir, nworkers,
     n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar,
-    getspocparams, timeoffset):
+    getspocparams, timeoffset, fit_ulinear, fit_uquad):
 
     lit_period, lit_a_by_rstar, lit_incl = litparams
     bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
-    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+    u_claret_linear, u_claret_quad = get_limb_darkening_initial_guesses(lcfile)
+    u_linear, u_quad = fit_ulinear, fit_uquad
+    print('claret 2017 u_linear: {}, u_quad: {}'.
+          format(u_claret_linear, u_claret_quad))
+    print('fit u_linear: {}, u_quad: {}'.
+          format(fit_ulinear, fit_uquad))
+    print('WRN!: the FIT values were used, not the theory ones.')
 
     sel = (time < t_end) & (time > t_start)
     sel_time = time[sel]
@@ -665,11 +682,14 @@ def fit_transit_mandelagol_and_line(
                     overwriteexistingsamples=overwriteexistingsamples,
                     mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset)
 
-    if not os.path.exists(
-        "../results/tess_lightcurve_fit_parameters/"+str(ticid)):
-        os.mkdir("../results/tess_lightcurve_fit_parameters/"+str(ticid))
+    fitparamdir = "../results/tess_lightcurve_fit_parameters/"+str(ticid)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
+    fitparamdir = fitparamdir+'/'+'sector_{:d}'.format(sectornum)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
     maf_savpath = ( os.path.join(
-        "../results/tess_lightcurve_fit_parameters/"+str(ticid),
+        fitparamdir,
         str(ticid)+"_{:s}_fit_dataerrs_t{:s}.pickle".format(fittype, t_num)
     ) )
     with open(maf_savpath, 'wb') as f:
@@ -703,12 +723,13 @@ def fit_transit_mandelagol_and_line(
     post_ingress = ( (fitepoch - timeoffset) - t_dur_day/2 < sel_time )
     pre_egress = ( sel_time < (fitepoch - timeoffset) + t_dur_day/2  )
     indsintransit = post_ingress & pre_egress
+    indsoot = ~indsintransit
 
     snr, _, empirical_errs = get_snr_of_dip(
         sel_time, sel_flux, sel_time, fitfluxs,
         magsarefluxes=True, atol_normalization=1e-2,
         transitdepth=k**2, npoints_in_transit=npoints_in_transit,
-        indsintransit=indsintransit)
+        indsforrms=indsoot)
 
     sigma_tc_theory = estimate_achievable_tmid_precision(
         snr, t_ingress_min=0.05*t_dur_day*24*60,
@@ -759,7 +780,7 @@ def fit_transit_mandelagol_and_line(
                     mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset)
 
     maf_savpath = ( os.path.join(
-        "../results/tess_lightcurve_fit_parameters/"+str(ticid),
+        fitparamdir,
         str(ticid)+"_{:s}_fit_empiricalerrs_t{:s}.pickle".format(fittype, t_num)
     ) )
     with open(maf_savpath, 'wb') as f:
@@ -768,9 +789,230 @@ def fit_transit_mandelagol_and_line(
 
 
 
+def fit_phased_transit_mandelagol_and_line(
+    sectornum,
+    t_starts, t_ends, time, flux, err_flux, lcfile, fitd,
+    trapfit, bls_period, litparams, ticid, fit_savdir, chain_savdir, nworkers,
+    n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar):
+
+    # fit only +/- n_transit_durations near the transit data. don't try to fit
+    # OOT or occultation data.
+    sel_inds = np.zeros_like(time).astype(bool)
+    for t_start,t_end in zip(t_starts, t_ends):
+        these_inds = (time > t_start) & (time < t_end)
+        if np.any(these_inds):
+            sel_inds |= these_inds
+    sel_time = time[sel_inds]
+    sel_flux = flux[sel_inds]
+    sel_err_flux = err_flux[sel_inds]
+
+    # initial guesses
+    lit_period, lit_a_by_rstar, lit_incl = litparams
+    bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
+    bls_t0 = trapfit['fitinfo']['fitepoch']
+    bls_period = bls_period
+    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+
+    # model = transit + line. "transit" as defined by BATMAN has flux=1 out of
+    # transit. so our bounds are for a line that should pass near origin.
+    fittype = 'mandelagol'
+    initfitparams = {'t0':bls_t0,
+                     'period':bls_period,
+                     'sma':lit_a_by_rstar,
+                     'rp':bls_rp,
+                     'incl':lit_incl,
+                     'u':[u_linear,u_quad]
+                    }
+    fixedparams = {'ecc':0.,
+                   'omega':90.,
+                   'limb_dark':'quadratic'}
+    priorbounds = {'t0':(bls_t0 - lit_period/10, bls_t0 + lit_period/10),
+                   'period':(bls_period-1e-2, bls_period+1e-2),
+                   'sma':(lit_a_by_rstar/3, 3*lit_a_by_rstar),
+                   'rp':(0.7*bls_rp, 1.3*bls_rp),
+                   'incl':(lit_incl-10, 90),
+                   'u_linear':(u_linear-1, u_linear+1),
+                   'u_quad':(u_quad-1, u_quad+1)
+                   }
+    cornerparams = {'t0':bls_t0,
+                    'period':bls_period,
+                    'sma':lit_a_by_rstar,
+                    'rp':bls_rp,
+                    'incl':lit_incl,
+                    'u_linear':u_linear,
+                    'u_quad':u_quad }
+
+    ndims = len(initfitparams)
+
+    ##########################################################
+    # FIRST: run the fit using the errors given in the data. #
+    ##########################################################
+    mandelagolfit_plotname = (
+        str(ticid)+
+        '_phased_{:s}_fit_{:d}d_dataerrs.png'.format(fittype, ndims)
+    )
+    corner_plotname = (
+        str(ticid)+
+        '_phased_corner_{:s}_fit_{:d}d_dataerrs.png'.format(fittype, ndims)
+    )
+    sample_plotname = (
+        str(ticid)+
+        '_phased_{:s}_fit_samples_{:d}d_dataerrs.h5'.format(fittype, ndims)
+    )
+
+    mandelagolfit_savfile = os.path.join(fit_savdir, mandelagolfit_plotname)
+    corner_savfile = os.path.join(fit_savdir, corner_plotname)
+    if not os.path.exists(chain_savdir):
+        try:
+            os.mkdir(chain_savdir)
+        except:
+            raise AssertionError('you need to save chains')
+    samplesavpath = os.path.join(chain_savdir, sample_plotname)
+
+    print('beginning {:s}'.format(samplesavpath))
+
+    plt.close('all')
+    maf_data_errs = lcfit.mandelagol_fit_magseries(
+                    sel_time, sel_flux, sel_err_flux,
+                    initfitparams, priorbounds, fixedparams,
+                    trueparams=cornerparams, magsarefluxes=True,
+                    sigclip=None, plotfit=mandelagolfit_savfile,
+                    plotcorner=corner_savfile,
+                    samplesavpath=samplesavpath, nworkers=nworkers,
+                    n_mcmc_steps=n_mcmc_steps, eps=1e-6, n_walkers=500,
+                    skipsampling=False,
+                    overwriteexistingsamples=overwriteexistingsamples,
+                    mcmcprogressbar=mcmcprogressbar)
+
+    fitparamdir = "../results/tess_lightcurve_fit_parameters/"+str(ticid)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
+    fitparamdir = fitparamdir+'/'+'sector_{:d}'.format(sectornum)
+    if not os.path.exists(fitparamdir):
+        os.mkdir(fitparamdir)
+    maf_savpath = ( os.path.join(
+        fitparamdir,
+        str(ticid)+"_phased_{:s}_fit_dataerrs.pickle".format(fittype)
+    ) )
+    with open(maf_savpath, 'wb') as f:
+        pickle.dump(maf_data_errs, f, pickle.HIGHEST_PROTOCOL)
+        print('saved {:s}'.format(maf_savpath))
+
+    fitfluxs = maf_data_errs['fitinfo']['fitmags']
+    fitepoch = maf_data_errs['fitinfo']['fitepoch']
+    fiterrors = maf_data_errs['fitinfo']['finalparamerrs']
+    fitepoch_perr = fiterrors['std_perrs']['t0']
+    fitepoch_merr = fiterrors['std_merrs']['t0']
+
+    # Winn (2010) eq 14 gives the transit duration
+    k = maf_data_errs['fitinfo']['finalparams']['rp']
+    b = lit_a_by_rstar * np.cos(lit_incl*u.deg)
+    t_dur_day = (
+        (lit_period*u.day)/np.pi * np.arcsin(
+            1/lit_a_by_rstar * np.sqrt(
+                (1 + k)**2 - b**2
+            ) / np.sin((lit_incl*u.deg))
+        )
+    ).to(u.day*u.rad).value
+
+    per_point_cadence = 2*u.min
+    npoints_in_transit = (
+        int(np.floor(((t_dur_day*u.day)/per_point_cadence).cgs.value))
+    )
+
+    # use the whole LC's RMS as the "noise"
+    snr, _, empirical_errs = get_snr_of_dip(
+        sel_time, sel_flux, sel_time, fitfluxs,
+        magsarefluxes=True, atol_normalization=1e-2,
+        transitdepth=k**2, npoints_in_transit=npoints_in_transit)
+
+    sigma_tc_theory = estimate_achievable_tmid_precision(
+        snr, t_ingress_min=0.05*t_dur_day*24*60,
+        t_duration_hr=t_dur_day*24)
+
+    print('mean fitepoch err: {:.2e}'.format(
+          np.mean([fitepoch_merr, fitepoch_perr])))
+    print('mean fitepoch err / theory err = {:.2e}'.format(
+          np.mean([fitepoch_merr, fitepoch_perr]) / sigma_tc_theory))
+    print('mean error from data lightcurve ='+
+          '{:.2e}'.format(np.mean(sel_err_flux))+
+          '\nmeasured empirical RMS = {:.2e}'.format(empirical_errs))
+
+    empirical_err_flux = np.ones_like(sel_err_flux)*empirical_errs
+
+    # THEN: rerun the fit using the empirically determined errors
+    # (measured from RMS of the transit-model subtracted lightcurve).
+    mandelagolfit_plotname = (
+        str(ticid)+
+        '_phased_{:s}_fit_{:d}d_empiricalerrs.png'.format(fittype, ndims)
+    )
+    corner_plotname = (
+        str(ticid)+
+        '_phased_corner_{:s}_fit_{:d}d_empiricalerrs.png'.format(fittype, ndims)
+    )
+    sample_plotname = (
+        str(ticid)+
+        '_phased_{:s}_fit_samples_{:d}d_empiricalerrs.h5'.format(fittype, ndims)
+    )
+
+    mandelagolfit_savfile = os.path.join(fit_savdir, mandelagolfit_plotname)
+    corner_savfile = os.path.join(fit_savdir, corner_plotname)
+    samplesavpath = os.path.join(chain_savdir, sample_plotname)
+
+    print('beginning {:s}'.format(samplesavpath))
+
+    plt.close('all')
+    maf_empc_errs = lcfit.mandelagol_fit_magseries(
+                    sel_time, sel_flux, empirical_err_flux,
+                    initfitparams, priorbounds, fixedparams,
+                    trueparams=cornerparams, magsarefluxes=True,
+                    sigclip=None, plotfit=mandelagolfit_savfile,
+                    plotcorner=corner_savfile,
+                    samplesavpath=samplesavpath, nworkers=nworkers,
+                    n_mcmc_steps=n_mcmc_steps, eps=1e-6, n_walkers=500,
+                    skipsampling=False,
+                    overwriteexistingsamples=overwriteexistingsamples,
+                    mcmcprogressbar=mcmcprogressbar)
+
+    maf_savpath = ( os.path.join(
+        fitparamdir,
+        str(ticid)+"_phased_{:s}_fit_empiricalerrs.pickle".format(fittype)
+    ) )
+    with open(maf_savpath, 'wb') as f:
+        pickle.dump(maf_empc_errs, f, pickle.HIGHEST_PROTOCOL)
+        print('saved {:s}'.format(maf_savpath))
+
+    # now plot the phased lightcurve
+    fitfluxs = maf_empc_errs['fitinfo']['fitmags']
+    fittimes = maf_empc_errs['magseries']['times']
+    fitepoch = maf_empc_errs['fitinfo']['finalparams']['t0']
+    outfile = ( os.path.join(
+        fit_savdir,
+        str(ticid)+"_phased_{:s}_fit_empiricalerrs.png".format(fittype)
+    ) )
+
+    plot_phased_mag_series(sel_time, sel_flux, lit_period, magsarefluxes=True,
+                           errs=None, normto=False, epoch=fitepoch,
+                           outfile=outfile, sigclip=False, phasebin=0.01,
+                           plotphaselim=[-.4,.4], plotdpi=400,
+                           modelmags=fitfluxs, modeltimes=fittimes,
+                           xaxlabel='Time from mid-transit [days]',
+                           yaxlabel='Relative flux', xtimenotphase=True)
+    print('made {}'.format(outfile))
+
+    # pass numbers that will be fixed during single-transit fitting
+    fit_abyrstar, fit_incl, fit_ulinear, fit_uquad = (
+        maf_empc_errs['fitinfo']['finalparams']['sma'],
+        maf_empc_errs['fitinfo']['finalparams']['incl'],
+        maf_empc_errs['fitinfo']['finalparams']['u_linear'],
+        maf_empc_errs['fitinfo']['finalparams']['u_quad']
+    )
+    return fit_abyrstar, fit_incl, fit_ulinear, fit_uquad
 
 
-def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
+def measure_transit_times_from_lightcurve(ticid, sectornum,
+                                          n_mcmc_steps,
+                                          n_phase_mcmc_steps,
                                           getspocparams=False,
                                           read_literature_params=True,
                                           overwriteexistingsamples=False,
@@ -778,7 +1020,7 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
                                           nworkers=4,
                                           chain_savdir='/home/luke/local/emcee_chains/',
                                           lcdir=None,
-                                          n_transit_durations=5,
+                                          n_transit_durations=10,
                                           verify_times=False):
 
     make_diagnostic_plots = True
@@ -807,6 +1049,14 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
             lcfile = lcfiles[0]
 
     fit_savdir = '../results/lc_analysis/'+str(ticid)
+    if not os.path.exists(fit_savdir):
+        os.mkdir(fit_savdir)
+    fit_savdir = fit_savdir+'/'+'sector_'+str(sectornum)
+    if not os.path.exists(fit_savdir):
+        os.mkdir(fit_savdir)
+    chain_savdir = chain_savdir+'sector_'+str(sectornum)
+    if not os.path.exists(chain_savdir):
+        os.mkdir(chain_savdir)
     blsfit_plotname = str(ticid)+'_bls_fit.png'
     trapfit_plotname = str(ticid)+'_trapezoid_fit.png'
     mandelagolfit_plotname = str(ticid)+'_mandelagol_fit_4d.png'
@@ -847,6 +1097,7 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
                                        magsarefluxes=True, sigclip=None,
                                        perioddeltapercent=5)
 
+    bls_period = fitd['period']
     #  plot the BLS model.
     lcfit._make_fit_plot(fitd['phases'], fitd['phasedmags'], None,
                          fitd['blsmodel'], fitd['period'], fitd['epoch'],
@@ -863,22 +1114,40 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
                                               magsarefluxes=True, sigclip=None,
                                               plotfit=trapfit_savfile)
 
-    # isolate each transit to within +/-10 transit durations
+    # isolate each transit to within +/- n_transit_durations
     tmids, t_starts, t_ends = (
         get_transit_times(fitd, time, n_transit_durations, trapd=trapfit)
     )
 
     rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
 
-    # get the guess physical parameters from the data
     if read_literature_params:
+        # get the fixed physical parameters from the data
         litpath = (
             '../data/literature_physicalparams/{:d}/params.csv'.format(ticid)
         )
         litdf = pd.read_csv(litpath)
+        # NOTE: only period is used, for now
         litparams = tuple(map(float,
             [litdf['period_day'],litdf['a_by_rstar'],litdf['inclination_deg']])
         )
+    else:
+        raise AssertionError
+
+    # fit the phased transit, within N durations of the transit itself, to
+    # determine a/Rstar, inclination, and quadratric terms for fixed
+    # parameters. only period from literature.
+    fit_abyrstar, fit_incl, fit_ulinear, fit_uquad = (
+        fit_phased_transit_mandelagol_and_line(
+            sectornum,
+            t_starts, t_ends, time, flux, err_flux, lcfile, fitd, trapfit,
+            bls_period, litparams, ticid, fit_savdir, chain_savdir, nworkers,
+            n_phase_mcmc_steps, overwriteexistingsamples, mcmcprogressbar)
+    )
+
+    litparams = tuple(map(float,
+            [litdf['period_day'],fit_abyrstar,fit_incl])
+    )
 
     for transit_ix, t_start, t_end in list(
         zip(range(len(t_starts)), t_starts, t_ends)
@@ -902,10 +1171,12 @@ def measure_transit_times_from_lightcurve(ticid, sectornum, n_mcmc_steps,
             # Method #2: fit transit + line, 4 parameters: (midtime, slope,
             # intercept, rp).
             fit_transit_mandelagol_and_line(
+                sectornum,
                 transit_ix, t_start, t_end, this_time, flux, err_flux,
                 lcfile, fitd, trapfit, litparams, ticid, fit_savdir,
                 chain_savdir, nworkers, n_mcmc_steps, overwriteexistingsamples,
-                mcmcprogressbar, getspocparams, timeoffset
+                mcmcprogressbar, getspocparams, timeoffset, fit_ulinear,
+                fit_uquad
             )
 
         except Exception as e:
@@ -930,10 +1201,12 @@ if __name__ == '__main__':
         help=('string used in sector number (used to glob lightcurves)'))
 
     parser.add_argument('--n_mcmc_steps', type=int, default=None,
-        help=('steps to run in MCMC'))
+        help=('steps to run in MCMC of individual transits'))
+    parser.add_argument('--n_phase_mcmc_steps', type=int, default=None,
+        help=('steps to run in MCMC of phased transit'))
     parser.add_argument('--nworkers', type=int, default=4,
         help=('how many workers?'))
-    parser.add_argument('--n_transit_durations', type=int, default=5,
+    parser.add_argument('--n_transit_durations', type=int, default=4,
         help=('for transit model fitting, how large a time slice around the '
               'transit do you want to fit? [N*transit_duration]'))
 
@@ -979,8 +1252,9 @@ if __name__ == '__main__':
 
     measure_transit_times_from_lightcurve(
         args.ticid, args.sectornum, args.n_mcmc_steps,
-        getspocparams=args.spocparams, overwriteexistingsamples=args.overwrite,
-        mcmcprogressbar=args.progressbar,nworkers=args.nworkers,
+        args.n_phase_mcmc_steps, getspocparams=args.spocparams,
+        overwriteexistingsamples=args.overwrite,
+        mcmcprogressbar=args.progressbar, nworkers=args.nworkers,
         chain_savdir=args.chain_savdir, lcdir=args.lcdir,
         n_transit_durations=args.n_transit_durations,
         read_literature_params=args.rlp,
