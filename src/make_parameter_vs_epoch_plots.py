@@ -690,11 +690,13 @@ if __name__ == '__main__':
     # tesstimeglob = '184240683_measured_TESS_times_16_transits.csv'
     # req_precision_minutes = 30
 
-    # # WASP-4b with secondaries
-    # manualtimeglob = 'WASP-4b_manual_with_secondaries.csv'
-    # tesstimeglob = '402026209_measured_TESS_times_18_transits.csv'
-    # savname = 'WASP-4b_transits_and_secondaries_and_TESS_times_O-C_vs_epoch.png'
-    # req_precision_minutes = 10
+    # # WASP-4b double-check
+    # plname = 'WASP-4b'
+    # manualtimeglob = 'WASP-4b_manual_doublechecking.csv'
+    # tesstimeglob = '402026209_measured_TESS_times_18_transits_doublechecking.csv'
+    # savname = 'WASP-4b_doublechecking_TESS_times_O-C_vs_epoch.png'
+    # tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
+    # ylim = [-3.2,1.2]
 
     # # WASP-4b TESS only
     # manualtimeglob = 'WASP-4b_manual.csv'
@@ -709,7 +711,7 @@ if __name__ == '__main__':
     occultationtimeglob = '{:s}_manual_occultations.csv'.format(plname)
     savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
-    req_precision_minutes = 1 # get a junky one otherwise!
+    req_precision_minutes = 2 # get a junky one otherwise!
 
     # # WASP-18b just TESS times... do you see nice TTVs?
     # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
