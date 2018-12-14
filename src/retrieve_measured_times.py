@@ -24,11 +24,11 @@ np.random.seed(42)
 
 def retrieve_measured_times_pickle(
     ticid, pickledir='../results/tess_lightcurve_fit_parameters/',
-    sampledir='/home/luke/local/emcee_chains/',
+    sampledirglob='/home/luke/local/emcee_chains/sector_*/',
     fittype='mandelagol_and_line',
     ndim=4):
 
-    pickledir += str(ticid)
+    pickledir = pickledir+str(ticid)+'/sector_*/'
 
     # empirical errors -> believable error bars!
     fpattern = (
@@ -41,7 +41,7 @@ def retrieve_measured_times_pickle(
         '{:s}_{:s}_fit_samples_{:d}d_t???_empiricalerrs.h5'.
         format(str(ticid), fittype, ndim)
     )
-    samplenames = np.sort(glob(sampledir+samplepattern))
+    samplenames = np.sort(glob(sampledirglob+samplepattern))
 
     t0_list, t0_merrs, t0_perrs, t0_bigerrs, samplepaths, picklepaths = (
         [],[],[],[],[],[]
