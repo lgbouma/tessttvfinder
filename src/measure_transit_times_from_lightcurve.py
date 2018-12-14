@@ -252,10 +252,10 @@ def get_timeseries_and_median_filter(lcfile, mingap=240/(60*24)):
     return time, flux, err_flux, smooth_flux, whitened_flux
 
 
-def retrieve_no_whitening(lcfile, make_diagnostic_plots=True, orbitgap=1.,
-                          orbitpadding=60/(60*24), expected_norbits=2,
-                          dump_interval=2.1, expected_ndumps=10,
-                          dumppadding=10/(60*24)):
+def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
+                          orbitgap=1., orbitpadding=60/(60*24),
+                          expected_norbits=2, dump_interval=2.1,
+                          expected_ndumps=10, dumppadding=10/(60*24)):
     '''
     Retrieve the lightcurve file and perform basic cleaning.
 
@@ -400,7 +400,10 @@ def retrieve_no_whitening(lcfile, make_diagnostic_plots=True, orbitgap=1.,
                            linewidths=0, marker='^')
 
         ticid = int(lcd['objectid'].lstrip('TIC').strip())
-        savdir = '../results/lc_analysis/'+str(ticid)
+        savdir = '../results/lc_analysis/'+str(ticid)+'/'
+        if not os.path.exists(savdir):
+            os.mkdir(savdir)
+        savdir += 'sector_{:d}'.format(sectornum)
         if not os.path.exists(savdir):
             os.mkdir(savdir)
         savpath = os.path.join(
@@ -1078,7 +1081,7 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
 
     # METHOD #2:
     time, flux, err_flux, lcd = retrieve_no_whitening(
-        lcfile, make_diagnostic_plots=make_diagnostic_plots)
+        lcfile, sectornum, make_diagnostic_plots=make_diagnostic_plots)
 
     if verify_times:
         from verify_time_stamps import manual_verify_time_stamps
