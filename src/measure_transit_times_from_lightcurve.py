@@ -83,6 +83,8 @@ from astrobase.plotbase import plot_phased_mag_series
 
 from astrobase.varbase.transits import get_transit_times
 
+from numpy.polynomial.legendre import Legendre
+
 np.random.seed(42)
 
 def get_a_over_Rstar_guess(lcfile, period):
@@ -823,6 +825,22 @@ def fit_phased_transit_mandelagol_and_line(
     trapfit, bls_period, litparams, ticid, fit_savdir, chain_savdir, nworkers,
     n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar):
 
+    # parse initial guesses
+    lit_period, lit_a_by_rstar, lit_incl = litparams
+    bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
+    bls_t0 = trapfit['fitinfo']['fitepoch']
+    bls_period = bls_period
+    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+
+    b = lit_a_by_rstar * np.cos(lit_incl*u.deg)
+    bls_lit_t_dur_day = (
+        (lit_period*u.day)/np.pi * np.arcsin(
+            1/lit_a_by_rstar * np.sqrt(
+                (1 + bls_rp)**2 - b**2
+            ) / np.sin((lit_incl*u.deg))
+        )
+    ).to(u.day*u.rad).value
+
     # fit only +/- n_transit_durations near the transit data. don't try to fit
     # OOT or occultation data.
     sel_inds = np.zeros_like(time).astype(bool)
@@ -830,19 +848,98 @@ def fit_phased_transit_mandelagol_and_line(
         these_inds = (time > t_start) & (time < t_end)
         if np.any(these_inds):
             sel_inds |= these_inds
+
     sel_time = time[sel_inds]
-    sel_flux = flux[sel_inds]
+    _ = flux[sel_inds]
     sel_err_flux = err_flux[sel_inds]
 
-    # initial guesses
-    lit_period, lit_a_by_rstar, lit_incl = litparams
-    bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
-    bls_t0 = trapfit['fitinfo']['fitepoch']
-    bls_period = bls_period
-    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+    # to construct the phase-folded light curve, fit a line to the OOT flux
+    # data, and use the parameters of the best-fitting line to "rectify" each
+    # lightcurve. Note that an order 1 legendre polynomial == a line, so we'll
+    # use that implementation.
+    out_fluxs, in_fluxs, fit_fluxs, time_list, intra_inds_list = [], [], [], [], []
+    for t_start,t_end in zip(t_starts, t_ends):
+        this_window_inds = (time > t_start) & (time < t_end)
+        tmid = t_start + (t_end-t_start)/2
+        # flag out slightly more than expected "in transit" points
+        prefactor = 1.05
+        transit_start = tmid - prefactor*bls_lit_t_dur_day/2
+        transit_end = tmid + prefactor*bls_lit_t_dur_day/2
 
-    # model = transit + line. "transit" as defined by BATMAN has flux=1 out of
-    # transit. so our bounds are for a line that should pass near origin.
+        this_window_intra = (
+            (time[this_window_inds] > transit_start) &
+            (time[this_window_inds] < transit_end)
+        )
+        this_window_oot = ~this_window_intra
+
+        this_oot_time = time[this_window_inds][this_window_oot]
+        this_oot_flux = flux[this_window_inds][this_window_oot]
+
+        p = Legendre.fit(this_oot_time, this_oot_flux, 1)
+        coeffs = p.coef
+        this_window_fit_flux = p(time[this_window_inds])
+
+        time_list.append( time[this_window_inds] )
+        out_fluxs.append( flux[this_window_inds] / this_window_fit_flux )
+        fit_fluxs.append( this_window_fit_flux )
+        in_fluxs.append( flux[this_window_inds] )
+        intra_inds_list.append( (time[this_window_inds]>transit_start) &
+                                (time[this_window_inds]<transit_end) )
+
+    # make plots to verify that this procedure is working.
+    ix = 0
+    for _time, _flux, _fit_flux, _out_flux, _intra in zip(
+        time_list, in_fluxs, fit_fluxs, out_fluxs, intra_inds_list):
+
+        outdir = ('../results/lc_analysis/{:s}/sector_{:d}/'.
+                  format(str(ticid),sectornum))
+        savpath = ( outdir+ '{:s}_phased_divideOOTline_t{:s}.png'.
+                    format(str(ticid),str(ix).zfill(3)))
+
+        plt.close('all')
+        fig, (a0,a1) = plt.subplots(nrows=2, sharex=True, figsize=(6,6))
+
+        a0.scatter(_time, _flux, c='k', alpha=0.9, label='data', zorder=1,
+                   s=10, rasterized=True, linewidths=0)
+        a0.scatter(_time[_intra], _flux[_intra], c='r', alpha=1,
+                   label='in-transit (for fit)', zorder=2, s=10, rasterized=True,
+                   linewidths=0)
+
+        a0.plot(_time, _fit_flux, c='b', zorder=0, rasterized=True, lw=2,
+                alpha=0.4, label='linear fit to OOT')
+
+        a1.scatter(_time, _out_flux, c='k', alpha=0.9, rasterized=True,
+                   s=10, linewidths=0)
+        a1.plot(_time, _fit_flux/_fit_flux, c='b', zorder=0, rasterized=True,
+                lw=2, alpha=0.4, label='linear fit to OOT')
+
+        xlim = a1.get_xlim()
+
+        for a in [a0,a1]:
+            a.hlines(1, np.min(_time)-10, np.max(_time)+10, color='gray',
+                     zorder=-2, rasterized=True, alpha=0.2, lw=1,
+                     label='flux=1')
+
+        a1.set_xlabel('time-t0 [days]')
+        a0.set_ylabel('relative flux')
+        a1.set_ylabel('residual')
+        a0.legend(loc='best', fontsize='x-small')
+        for a in [a0, a1]:
+            a.get_yaxis().set_tick_params(which='both', direction='in')
+            a.get_xaxis().set_tick_params(which='both', direction='in')
+            a.set_xlim(xlim)
+
+        fig.tight_layout(h_pad=0, w_pad=0)
+        fig.savefig(savpath, dpi=300, bbox_inches='tight')
+        print('saved {:s}'.format(savpath))
+        ix += 1
+
+    sel_flux = np.concatenate(out_fluxs)
+    fit_flux = np.concatenate(fit_fluxs)
+    assert len(sel_flux) == len(sel_time) == len(sel_err_flux)
+
+    # model = transit only (no line). "transit" as defined by BATMAN has flux=1
+    # out of transit.
     fittype = 'mandelagol'
     initfitparams = {'t0':bls_t0,
                      'period':bls_period,
@@ -934,7 +1031,6 @@ def fit_phased_transit_mandelagol_and_line(
 
     # Winn (2010) eq 14 gives the transit duration
     k = maf_data_errs['fitinfo']['finalparams']['rp']
-    b = lit_a_by_rstar * np.cos(lit_incl*u.deg)
     t_dur_day = (
         (lit_period*u.day)/np.pi * np.arcsin(
             1/lit_a_by_rstar * np.sqrt(
