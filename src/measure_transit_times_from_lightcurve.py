@@ -1,15 +1,23 @@
 # -*- coding: utf-8 -*-
 '''
 usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
+                                                [--sectornum SECTORNUM]
                                                 [--n_mcmc_steps N_MCMC_STEPS]
+                                                [--n_phase_mcmc_steps N_PHASE_MCMC_STEPS]
                                                 [--nworkers NWORKERS]
+                                                [--n_transit_durations N_TRANSIT_DURATIONS]
                                                 [--mcmcprogressbar]
                                                 [--no-mcmcprogressbar]
                                                 [--overwritesamples]
                                                 [--no-overwritesamples]
                                                 [--getspocparams]
                                                 [--no-getspocparams]
+                                                [--read_literature_params]
+                                                [--no-read_literature_params]
+                                                [--verify-times]
+                                                [--no-verify-times]
                                                 [--chain_savdir CHAIN_SAVDIR]
+                                                [--lcdir LCDIR]
 
 Given a lightcurve with transits (e.g., alerted from TESS Science Office),
 measure the times that they fall at by fitting models.
@@ -19,9 +27,18 @@ optional arguments:
   --ticid TICID         integer TIC ID for object. Lightcurve assumed to be at
                         ../data/tess_lightcurves/tess2018206045859-s0001-{tici
                         d}-111-s_llc.fits.gz
+  --sectornum SECTORNUM
+                        string used in sector number (used to glob
+                        lightcurves)
   --n_mcmc_steps N_MCMC_STEPS
-                        steps to run in MCMC
+                        steps to run in MCMC of individual transits
+  --n_phase_mcmc_steps N_PHASE_MCMC_STEPS
+                        steps to run in MCMC of phased transit
   --nworkers NWORKERS   how many workers?
+  --n_transit_durations N_TRANSIT_DURATIONS
+                        for transit model fitting, how large a time slice
+                        around the transit do you want to fit?
+                        [N*transit_duration]
   --mcmcprogressbar
   --no-mcmcprogressbar
   --overwritesamples
@@ -29,8 +46,16 @@ optional arguments:
   --getspocparams       whether to parse ../data/toi-plus-2018-09-14.csv for
                         their "true" parameters
   --no-getspocparams
+  --read_literature_params
+                        whether to parse ../data/TICID/params.csv for
+                        manually-parsed literature params
+  --no-read_literature_params
+  --verify-times        whether to parse ../data/TICID/params.csv for
+                        manually-parsed literature params
+  --no-verify-times
   --chain_savdir CHAIN_SAVDIR
                         e.g., /home/foo/bar/
+  --lcdir LCDIR         e.g., /home/foo/lightcurves/
 '''
 from __future__ import division, print_function
 
