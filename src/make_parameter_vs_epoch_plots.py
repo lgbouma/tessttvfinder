@@ -712,10 +712,11 @@ if __name__ == '__main__':
     savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
     req_precision_minutes = 2 # get a junky one otherwise!
+    ylim = [-2.5,1.5]
 
     # # WASP-18b just TESS times... do you see nice TTVs?
     # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
     # savname = 'WASP-18b_TESS_times_O-C_vs_epoch.png'
     # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = [-20,60]
@@ -723,7 +724,7 @@ if __name__ == '__main__':
 
     # # WASP-18b, with ASAS and hipparcos point.
     # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
     # savname = 'WASP-18b_all_times_O-C_vs_epoch.png'
     # ylim = [-30,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
@@ -731,7 +732,7 @@ if __name__ == '__main__':
 
     # # WASP-18b, with ASAS point.
     # manualtimeglob = 'WASP-18b_manual_and_ASAS_times.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
     # savname = 'WASP-18b_manual_and_ASAS_times_O-C_vs_epoch.png'
     # ylim = [-3,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
@@ -741,7 +742,7 @@ if __name__ == '__main__':
     # plname = 'WASP-18b'
     # manualtimeglob = '{:s}_manual_no_hipparcos.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '100100827_measured_TESS_times_29_transits.csv'
+    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
     # asastimeglob = None # 'WASP-18b_manual_and_ASAS_times.csv'
     # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
