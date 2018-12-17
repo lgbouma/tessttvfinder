@@ -172,7 +172,7 @@ def plot_maxlikelihood_models(
 
 
 def plot_maxlikelihood_OminusC(
-    x, y, sigma_y, theta_linear, theta_quadratic, theta_precession,
+    x, y, sigma_y, theta_linear, theta_quadratic, theta_precession=None,
     savpath=os.path.join('../results/model_comparison/toy_model',
                          'data_maxlikelihood_OminusC.png'),
     xlabel='epoch', ylabel='deviation from constant period [min]',
@@ -204,10 +204,11 @@ def plot_maxlikelihood_OminusC(
                 quadratic_fit(theta_quadratic, xfit)
                     - linear_fit(theta_linear, xfit),
                 label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        a0.plot(xfit,
-                precession_fit(theta_precession, xfit)
-                    - linear_fit(theta_linear, xfit),
-                label='{:s} precession fit'.format(legendstr), zorder=-1)
+        if theta_precession:
+            a0.plot(xfit,
+                    precession_fit(theta_precession, xfit)
+                        - linear_fit(theta_linear, xfit),
+                    label='{:s} precession fit'.format(legendstr), zorder=-1)
 
         a1.errorbar(x_occ,
                    y_occ-linear_fit(theta_linear, x, x_occ=x_occ)[1],
@@ -220,10 +221,11 @@ def plot_maxlikelihood_OminusC(
                quadratic_fit(theta_quadratic, xfit, x_occ=xfit_occ)[1]
                    - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
                label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        a1.plot(xfit_occ,
-                precession_fit(theta_precession, xfit, x_occ=xfit_occ)[1]
-                    - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
-                label='{:s} precession fit'.format(legendstr), zorder=-1)
+        if theta_precession:
+            a1.plot(xfit_occ,
+                    precession_fit(theta_precession, xfit, x_occ=xfit_occ)[1]
+                        - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
+                    label='{:s} precession fit'.format(legendstr), zorder=-1)
 
         a1.legend(loc='best', fontsize='x-small')
         for ax in (a0,a1):
@@ -250,10 +252,11 @@ def plot_maxlikelihood_OminusC(
                 polynomial_fit(theta_quadratic, xfit)
                     - polynomial_fit(theta_linear, xfit),
                 label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        ax.plot(xfit,
-                precession_fit(theta_precession, xfit)
-                    - polynomial_fit(theta_linear, xfit),
-                label='{:s} precession fit'.format(legendstr), zorder=-1)
+        if theta_precession:
+            ax.plot(xfit,
+                    precession_fit(theta_precession, xfit)
+                        - polynomial_fit(theta_linear, xfit),
+                    label='{:s} precession fit'.format(legendstr), zorder=-1)
 
         ax.legend(loc='best', fontsize='x-small')
         ax.set_xlabel(xlabel)
@@ -585,7 +588,7 @@ def log_prior(theta, plparams, delta_period = 1e-5*24*60, delta_t0 = 3):
 
     Rstar, Mplanet, Mstar, semimaj, nominal_period, nominal_t0 = plparams
     Qstar_low = 1e3
-    Qstar_high = 1e9
+    Qstar_high = 1e12
 
     theta2_low = (
         -1/2 * nominal_period * 27 * np.pi / (2*Qstar_low) * Mplanet/Mstar
@@ -867,7 +870,7 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
             backend=backend
         )
         sampler.run_mcmc(starting_positions, n_mcmc_steps,
-                         progress=False)
+                         progress=True)
 
     if verbose:
         LOGINFO(
@@ -884,17 +887,27 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
     log_prob_samples = reader.get_log_prob(discard=n_to_discard, flat=True)
     log_prior_samples = reader.get_blobs(discard=n_to_discard, flat=True)
 
-    # Get best-fit parameters and their 1-sigma error bars
+    # Get best-fit parameters, their 1-sigma error bars, and the associated
+    # limits
     fit_statistics = list(
-        map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
-            list(zip( *np.percentile(samples, [16, 50, 84], axis=0))))
+        map(lambda v: (v[1], v[2]-v[1], v[1]-v[0], v[0], v[3], v[4]),
+            list(zip(*np.percentile(samples,
+                                    [15.85, 50, 84.15, 100-97.73, 100-99.87],
+                                    axis=0)
+                    )
+                )
+           )
     )
 
-    medianparams, std_perrs, std_merrs = {}, {}, {}
+    (medianparams, std_perrs, std_merrs,
+     onesigma_lower, twosigma_lower, threesigma_lower ) = {},{},{},{},{},{}
     for ix, k in enumerate(fitparamnames):
         medianparams[k] = fit_statistics[ix][0]
         std_perrs[k] = fit_statistics[ix][1]
         std_merrs[k] = fit_statistics[ix][2]
+        onesigma_lower[k] = fit_statistics[ix][3]
+        twosigma_lower[k] = fit_statistics[ix][4]
+        threesigma_lower[k] = fit_statistics[ix][5]
 
     x, y, sigma_y = data
     if isinstance(data_occ,np.ndarray):
@@ -907,7 +920,10 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
                 'maxlikeparams':theta_maxlike,
                 'medianparams':medianparams,
                 'std_perrs':std_perrs,
-                'std_merrs':std_merrs
+                'std_merrs':std_merrs,
+                'onesigma_lower':onesigma_lower,
+                'twosigma_lower':twosigma_lower,
+                'threesigma_lower':threesigma_lower
             },
             'samplesavpath':samplesavpath,
             'data':{
@@ -924,7 +940,10 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
                 'maxlikeparams':theta_maxlike,
                 'medianparams':medianparams,
                 'std_perrs':std_perrs,
-                'std_merrs':std_merrs
+                'std_merrs':std_merrs,
+                'onesigma_lower':onesigma_lower,
+                'twosigma_lower':twosigma_lower,
+                'threesigma_lower':threesigma_lower
             },
             'samplesavpath':samplesavpath,
             'data':{
@@ -1018,7 +1037,7 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
             backend=backend
         )
         sampler.run_mcmc(starting_positions, n_mcmc_steps,
-                         progress=False)
+                         progress=True)
 
     if verbose:
         LOGINFO(
@@ -1112,7 +1131,7 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
 #################################
 def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
          Rplanet=None, n_steps_prec=10, use_manual_precession=False,
-         sampledir='/home/luke/local/emcee_chains/'):
+         sampledir='/home/luke/local/emcee_chains/', run_precession_model=True):
     '''
     Compare linear, quadratic, and apsidal precession models. If precession
     data is found, at
@@ -1164,25 +1183,30 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
 
     #NOTE: when adding new times, want theta_linear[0] to set the guess. one
     #manual iteration is necessary.
-    if plname=='WASP-4b':
-        init_theta_precession = (
-            np.array([1.15850293e+06, 1927.0530, 2e-3, 2.85, 8e-04])
-        )
-    else:
-        raise NotImplementedError
+    if run_precession_model:
+        if plname=='WASP-4b':
+            init_theta_precession = (
+                np.array([1.15850293e+06, 1927.0530, 2e-3, 2.85, 8e-04])
+            )
+        elif not os.path.exists(occpath):
+            pass
+        else:
+            raise NotImplementedError
 
-    precession_result = ml_precession(data, data_occ=data_occ,
-                                      init_theta=init_theta_precession)
+        precession_result = ml_precession(data, data_occ=data_occ,
+                                          init_theta=init_theta_precession)
 
-    if precession_result.success and not use_manual_precession:
-        print('SUCCESS! tricked numerical optimization to get precession rsult')
-        print(precession_result)
-        theta_maxlike_precession = precession_result.x
+        if precession_result.success and not use_manual_precession:
+            print('SUCCESS! tricked numerical optimization to get precession rsult')
+            print(precession_result)
+            theta_maxlike_precession = precession_result.x
+        else:
+            print('WRN! using manual precession initialization values to start MCMC')
+            print(precession_result.message)
+            print('\nWRN! using initial guess...')
+            theta_maxlike_precession = init_theta_precession
     else:
-        print('WRN! using manual precession initialization values to start MCMC')
-        print(precession_result.message)
-        print('\nWRN! using initial guess...')
-        theta_maxlike_precession = init_theta_precession
+        theta_maxlike_precession = None
 
     plot_maxlikelihood_models(x, y, sigma_y, theta_linear, theta_quadratic,
                               savpath=savdir+'data_maxlikelihood_fits.png',
@@ -1209,10 +1233,11 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
 
     _, AIC_linear, BIC_linear = chi2_maxlike(1, data, data_occ=data_occ)
     _, AIC_quad, BIC_quad = chi2_maxlike(2, data, data_occ=data_occ)
-    _, AIC_prec, BIC_prec = (
-        chi2_bestfit_precession(data, theta_maxlike_precession,
-                                data_occ=data_occ)
-    )
+    if run_precession_model:
+        _, AIC_prec, BIC_prec = (
+            chi2_bestfit_precession(data, theta_maxlike_precession,
+                                    data_occ=data_occ)
+        )
 
     p_value = plot_chi2_diff_distribution_comparison(
         data, data_occ=data_occ,
@@ -1225,12 +1250,13 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
           format(np.exp(BIC_linear-BIC_quad)/2))
 
-    print('-----quad vs precession-----')
-    print('delta_AIC = AIC_prec-AIC_quad = {:.2f}'.format(AIC_prec-AIC_quad))
-    print('delta_BIC = BIC_prec-BIC_quad = {:.2f}'.format(BIC_prec-BIC_quad))
-    print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
-          format(np.exp(BIC_prec-BIC_quad)/2))
-    print('see Kass & Raftery 1995 for interpretation')
+    if run_precession_model:
+        print('-----quad vs precession-----')
+        print('delta_AIC = AIC_prec-AIC_quad = {:.2f}'.format(AIC_prec-AIC_quad))
+        print('delta_BIC = BIC_prec-BIC_quad = {:.2f}'.format(BIC_prec-BIC_quad))
+        print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
+              format(np.exp(BIC_prec-BIC_quad)/2))
+        print('see Kass & Raftery 1995 for interpretation')
 
     # Before diving into Bayesian model comparison, we need to do the Bayesian
     # model fitting. What are the best-fitting model parameters for each model?
@@ -1286,34 +1312,34 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     print('rough implied Qstar ~= {:.1e}'.format(Qstar))
     print('WRN! use consistent set of planet parameters in final analysis!')
 
-
     ##########
 
-    print('\nprecession model maxlike parameters\n')
-    print('t0 [min] = {:.4f}'.
-          format(theta_maxlike_precession[0])
-    )
-    print('P [day] = {:.9f}'.
-          format(theta_maxlike_precession[1]/(24*60))
-    )
-    print('e = {:.3e}'.
-          format(theta_maxlike_precession[2])
-    )
-    print('omega0 = {:.2f}'.
-          format(theta_maxlike_precession[3])
-    )
-    print('domega_dE = {:.3e}'.
-          format(theta_maxlike_precession[4])
-    )
+    if run_precession_model:
+        print('\nprecession model maxlike parameters\n')
+        print('t0 [min] = {:.4f}'.
+              format(theta_maxlike_precession[0])
+        )
+        print('P [day] = {:.9f}'.
+              format(theta_maxlike_precession[1]/(24*60))
+        )
+        print('e = {:.3e}'.
+              format(theta_maxlike_precession[2])
+        )
+        print('omega0 = {:.2f}'.
+              format(theta_maxlike_precession[3])
+        )
+        print('domega_dE = {:.3e}'.
+              format(theta_maxlike_precession[4])
+        )
 
-    # domega_dt = 1/P * domega_dE
-    period_yr = theta_maxlike_precession[1]/(24*60*365.2425)
-    domega_dt_in_deg_per_year = (
-        (((1/period_yr)*theta_maxlike_precession[4])*u.rad).to(u.deg).value
-    )
-    print('in deg/year, domega_dt = {:.2f}'.
-          format(domega_dt_in_deg_per_year)
-    )
+        # domega_dt = 1/P * domega_dE
+        period_yr = theta_maxlike_precession[1]/(24*60*365.2425)
+        domega_dt_in_deg_per_year = (
+            (((1/period_yr)*theta_maxlike_precession[4])*u.rad).to(u.deg).value
+        )
+        print('in deg/year, domega_dt = {:.2f}'.
+              format(domega_dt_in_deg_per_year)
+        )
 
     ########################################
     print('\n-----bayesian approach-----\n')
@@ -1350,29 +1376,34 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
                           n_mcmc_steps=n_steps,
                           eps=[1e-5, 1e-5, 1e-5])
 
-    plparams_prec = (
-        Rstar, Mplanet, Mstar, semimaj, theta_maxlike_precession[1]*u.min,
-        theta_maxlike_precession[0]*u.min
-    )
+    if run_precession_model:
+        plparams_prec = (
+            Rstar, Mplanet, Mstar, semimaj, theta_maxlike_precession[1]*u.min,
+            theta_maxlike_precession[0]*u.min
+        )
 
-    fit_precession = compute_mcmc_precession(
-        data, plparams_prec, theta_maxlike_precession, plname,
-        data_occ=data_occ,
-        n_mcmc_steps=n_steps_prec, sampledir=sampledir,
-        overwriteexistingsamples=overwrite, nworkers=16,
-        verbose=True, eps=[1e-5, 1e-5, 1e-3, 1, 1e-3])
+        fit_precession = compute_mcmc_precession(
+            data, plparams_prec, theta_maxlike_precession, plname,
+            data_occ=data_occ,
+            n_mcmc_steps=n_steps_prec, sampledir=sampledir,
+            overwriteexistingsamples=overwrite, nworkers=16,
+            verbose=True, eps=[1e-5, 1e-5, 1e-3, 1, 1e-3])
+    else:
+        fit_precession = None
 
     for fit, pklsavpath in zip(
         [fit_2d, fit_3d, fit_precession],
         [savdir+'fit_2d.pkl',savdir+'fit_3d.pkl',savdir+'fit_precession.pkl']
     ):
-        with open(pklsavpath, 'wb') as f:
-            pickle.dump(fit, f, pickle.HIGHEST_PROTOCOL)
-            print('saved {:s}'.format(pklsavpath))
+        if isinstance(fit, dict):
+            with open(pklsavpath, 'wb') as f:
+                pickle.dump(fit, f, pickle.HIGHEST_PROTOCOL)
+                print('saved {:s}'.format(pklsavpath))
 
     fi2d = fit_2d['fitinfo']
     fi3d = fit_3d['fitinfo']
-    fiprec = fit_precession['fitinfo']
+    if run_precession_model:
+        fiprec = fit_precession['fitinfo']
 
     median_t0_2d = fi2d['medianparams']['t0 [min]']
     median_period_2d = fi2d['medianparams']['P [min]']
@@ -1381,11 +1412,12 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     median_period_3d = fi3d['medianparams']['P [min]']
     median_quadterm_3d = fi3d['medianparams']['0.5 dP/dE [min]']
 
-    median_t0_prec = fiprec['medianparams']['t0 [min]']
-    median_Ps_prec = fiprec['medianparams']['P_side [min]']
-    median_e_prec = fiprec['medianparams']['e']
-    median_omega0_prec = fiprec['medianparams']['omega0']
-    median_domega_dE_prec = fiprec['medianparams']['domega_dE']
+    if run_precession_model:
+        median_t0_prec = fiprec['medianparams']['t0 [min]']
+        median_Ps_prec = fiprec['medianparams']['P_side [min]']
+        median_e_prec = fiprec['medianparams']['e']
+        median_omega0_prec = fiprec['medianparams']['omega0']
+        median_domega_dE_prec = fiprec['medianparams']['domega_dE']
 
     # get offset needed to convert to BJD_TDB
     t_offset = (
@@ -1492,153 +1524,200 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     print('WRN: could propagate uncertainties consistently for Qstar errs '
           '(by including sigma_period, along with sigma_quad)')
 
+    print('\nquadratic model upper limits\n')
+    onesigma_lower = fi3d['onesigma_lower']
+    twosigma_lower = fi3d['twosigma_lower']
+    threesigma_lower = fi3d['threesigma_lower']
+    print('0.5 dE/dt > {:.3e} at 1 sigma'.format(onesigma_lower['0.5 dP/dE [min]']))
+    print('0.5 dE/dt > {:.3e} at 2 sigma'.format(twosigma_lower['0.5 dP/dE [min]']))
+    print('0.5 dE/dt > {:.3e} at 3 sigma'.format(threesigma_lower['0.5 dP/dE [min]']))
+
+    onesigma_lower_dP_dt = (
+        2 * onesigma_lower['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
+    twosigma_lower_dP_dt = (
+        2 * twosigma_lower['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
+    threesigma_lower_dP_dt = (
+        2 * threesigma_lower['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
+
+    print('dP/dt > {:.3e} millisec/yr at 1 sigma'.format(onesigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
+    print('dP/dt > {:.3e} millisec/yr at 2 sigma'.format(twosigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
+    print('dP/dt > {:.3e} millisec/yr at 3 sigma'.format(threesigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
+
+    onesigma_lower_Qstar = (
+        - 1/onesigma_lower_dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
+    )
+    twosigma_lower_Qstar = (
+        - 1/twosigma_lower_dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
+    )
+    threesigma_lower_Qstar = (
+        - 1/threesigma_lower_dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
+    )
+
+    print('Qstar > {:.3e} at 1 sigma'.format(onesigma_lower_Qstar))
+    print('Qstar > {:.3e} at 2 sigma'.format(twosigma_lower_Qstar))
+    print('Qstar > {:.3e} at 3 sigma'.format(threesigma_lower_Qstar))
+
+
     ##########
     # PRECESSION MODEL MEDIAN (BEST-FIT) PARAMETERS
-    median_t0_prec = fiprec['medianparams']['t0 [min]']
-    median_Ps_prec = fiprec['medianparams']['P_side [min]']
-    median_e_prec = fiprec['medianparams']['e']
-    median_omega0_prec = fiprec['medianparams']['omega0']
-    median_domega_dE_prec = fiprec['medianparams']['domega_dE']
+    if run_precession_model:
+        median_t0_prec = fiprec['medianparams']['t0 [min]']
+        median_Ps_prec = fiprec['medianparams']['P_side [min]']
+        median_e_prec = fiprec['medianparams']['e']
+        median_omega0_prec = fiprec['medianparams']['omega0']
+        median_domega_dE_prec = fiprec['medianparams']['domega_dE']
 
-    print('\nprecession model best fit parameters\n')
-    print('t0 [min] = {:.4f} +({:.4f}), -({:.4f})'.
-          format(median_t0_prec,
-                 fiprec['std_perrs']['t0 [min]'],
-                 fiprec['std_merrs']['t0 [min]'])
-    )
-    print('t0 [BJD_TDB] = {:.5f} +({:.5f}), -({:.5f})'.
-          format(median_t0_prec/(24*60) + t_offset,
-                 fiprec['std_perrs']['t0 [min]']/(24*60) ,
-                 fiprec['std_merrs']['t0 [min]']/(24*60) )
-    )
-    print('P [day] = {:.8f} +({:.8f}), -({:.8f})'.
-          format(median_Ps_prec/(24*60),
-                 fiprec['std_perrs']['P_side [min]']/(24*60),
-                 fiprec['std_merrs']['P_side [min]']/(24*60))
-    )
-    print('e = {:.3e} +({:.3e}), -({:.3e})'.
-          format(median_e_prec,
-                 fiprec['std_perrs']['e'],
-                 fiprec['std_merrs']['e'])
-    )
-    print('e = {:.5f} +({:.5f}), -({:.5f})'.
-          format(median_e_prec,
-                 fiprec['std_perrs']['e'],
-                 fiprec['std_merrs']['e'])
-    )
-    print('omega0 = {:.2f} +({:.2f}), -({:.2f})'.
-          format(median_omega0_prec,
-                 fiprec['std_perrs']['omega0'],
-                 fiprec['std_merrs']['omega0'])
-    )
-    print('domega_dE = {:.3e} +({:.3e}), -({:.3e})'.
-          format(median_domega_dE_prec,
-                 fiprec['std_perrs']['domega_dE'],
-                 fiprec['std_merrs']['domega_dE'])
-    )
+        print('\nprecession model best fit parameters\n')
+        print('t0 [min] = {:.4f} +({:.4f}), -({:.4f})'.
+              format(median_t0_prec,
+                     fiprec['std_perrs']['t0 [min]'],
+                     fiprec['std_merrs']['t0 [min]'])
+        )
+        print('t0 [BJD_TDB] = {:.5f} +({:.5f}), -({:.5f})'.
+              format(median_t0_prec/(24*60) + t_offset,
+                     fiprec['std_perrs']['t0 [min]']/(24*60) ,
+                     fiprec['std_merrs']['t0 [min]']/(24*60) )
+        )
+        print('P [day] = {:.8f} +({:.8f}), -({:.8f})'.
+              format(median_Ps_prec/(24*60),
+                     fiprec['std_perrs']['P_side [min]']/(24*60),
+                     fiprec['std_merrs']['P_side [min]']/(24*60))
+        )
+        print('e = {:.3e} +({:.3e}), -({:.3e})'.
+              format(median_e_prec,
+                     fiprec['std_perrs']['e'],
+                     fiprec['std_merrs']['e'])
+        )
+        print('e = {:.5f} +({:.5f}), -({:.5f})'.
+              format(median_e_prec,
+                     fiprec['std_perrs']['e'],
+                     fiprec['std_merrs']['e'])
+        )
+        print('omega0 = {:.2f} +({:.2f}), -({:.2f})'.
+              format(median_omega0_prec,
+                     fiprec['std_perrs']['omega0'],
+                     fiprec['std_merrs']['omega0'])
+        )
+        print('domega_dE = {:.3e} +({:.3e}), -({:.3e})'.
+              format(median_domega_dE_prec,
+                     fiprec['std_perrs']['domega_dE'],
+                     fiprec['std_merrs']['domega_dE'])
+        )
 
-    # domega_dt = 1/P * domega_dE
-    period_yr = median_Ps_prec/(24*60*365.2425)
-    domega_dt_in_deg_per_year = (
-        (((1/period_yr)*median_domega_dE_prec)*u.rad).to(u.deg).value
-    )
-    domega_dt_in_deg_per_year_perr = (
-        (((1/period_yr)*fiprec['std_perrs']['domega_dE'])*u.rad).to(u.deg).value
-    )
-    domega_dt_in_deg_per_year_merr = (
-        (((1/period_yr)*fiprec['std_merrs']['domega_dE'])*u.rad).to(u.deg).value
-    )
-    print('in deg/year, domega_dt = {:.2f} +({:.2f}), -({:.2f})'.
-          format(domega_dt_in_deg_per_year,
-                 domega_dt_in_deg_per_year_perr,
-                 domega_dt_in_deg_per_year_merr)
-    )
-    print('implying precession period {:.1f} years +({:.1f}) -({:.1f})'.
-          format(
-              360/domega_dt_in_deg_per_year,
-              360/domega_dt_in_deg_per_year_perr,
-              360/domega_dt_in_deg_per_year_merr)
-    )
+        # domega_dt = 1/P * domega_dE
+        period_yr = median_Ps_prec/(24*60*365.2425)
+        domega_dt_in_deg_per_year = (
+            (((1/period_yr)*median_domega_dE_prec)*u.rad).to(u.deg).value
+        )
+        domega_dt_in_deg_per_year_perr = (
+            (((1/period_yr)*fiprec['std_perrs']['domega_dE'])*u.rad).to(u.deg).value
+        )
+        domega_dt_in_deg_per_year_merr = (
+            (((1/period_yr)*fiprec['std_merrs']['domega_dE'])*u.rad).to(u.deg).value
+        )
+        print('in deg/year, domega_dt = {:.2f} +({:.2f}), -({:.2f})'.
+              format(domega_dt_in_deg_per_year,
+                     domega_dt_in_deg_per_year_perr,
+                     domega_dt_in_deg_per_year_merr)
+        )
+        print('implying precession period {:.1f} years +({:.1f}) -({:.1f})'.
+              format(
+                  360/domega_dt_in_deg_per_year,
+                  360/domega_dt_in_deg_per_year_perr,
+                  360/domega_dt_in_deg_per_year_merr)
+        )
 
-    # implies maximum timing variation away from P/2 of...? Use Eq 33
-    # of Winn et al 2010.
-    orbital_period = median_period_2d/(24*60)
+        # implies maximum timing variation away from P/2 of...? Use Eq 33
+        # of Winn et al 2010.
+        orbital_period = median_period_2d/(24*60)
 
-    max_secondary_variation = (
-        orbital_period/2 * (4/np.pi)*median_e_prec
-    )*u.day
-    max_secondary_variation_upper = (
-        orbital_period/2 *
-        (4/np.pi)*(median_e_prec+fiprec['std_perrs']['e'])
-    )*u.day
-    max_secondary_variation_lower = (
-        orbital_period/2 *
-        (4/np.pi)*(median_e_prec-fiprec['std_merrs']['e'])
-    )*u.day
-    print('implied amplitude of occultation timing variation away '
-          'from P/2: {:.1f} +({:.1f}) -({:.1f})'.
-         format(max_secondary_variation.to(u.minute),
-                max_secondary_variation_upper.to(u.minute),
-                max_secondary_variation_lower.to(u.minute)))
+        max_secondary_variation = (
+            orbital_period/2 * (4/np.pi)*median_e_prec
+        )*u.day
+        max_secondary_variation_upper = (
+            orbital_period/2 *
+            (4/np.pi)*(median_e_prec+fiprec['std_perrs']['e'])
+        )*u.day
+        max_secondary_variation_lower = (
+            orbital_period/2 *
+            (4/np.pi)*(median_e_prec-fiprec['std_merrs']['e'])
+        )*u.day
+        print('implied amplitude of occultation timing variation away '
+              'from P/2: {:.1f} +({:.1f}) -({:.1f})'.
+             format(max_secondary_variation.to(u.minute),
+                    max_secondary_variation_upper.to(u.minute),
+                    max_secondary_variation_lower.to(u.minute)))
 
-    # implies k2,p equals what? Use Eq 16 of Patra+ 2017.
-    Rplanet = Rplanet*u.Rjup
-    Mp_by_Mstar = (Mplanet/Mstar).cgs.value
-    Rplanet_by_a = (Rplanet/semimaj).cgs.value
+        # implies k2,p equals what? Use Eq 16 of Patra+ 2017.
+        Rplanet = Rplanet*u.Rjup
+        Mp_by_Mstar = (Mplanet/Mstar).cgs.value
+        Rplanet_by_a = (Rplanet/semimaj).cgs.value
 
-    k2_p_median = (
-        median_domega_dE_prec / (15*np.pi)
-        * Mp_by_Mstar * Rplanet_by_a**(-5)
-    )
-    k2_p_upper = (
-        (median_domega_dE_prec+fiprec['std_perrs']['domega_dE']) / (15*np.pi)
-        * Mp_by_Mstar * Rplanet_by_a**(-5)
-    )
-    k2_p_lower = (
-        (median_domega_dE_prec-fiprec['std_merrs']['domega_dE']) / (15*np.pi)
-        * Mp_by_Mstar * Rplanet_by_a**(-5)
-    )
-    print('implied planet love number k2,p: '
-          '{:.3f} +({:.3f}) -({:.3f})'.
-         format(k2_p_median,
-                k2_p_upper,
-                k2_p_lower))
+        k2_p_median = (
+            median_domega_dE_prec / (15*np.pi)
+            * Mp_by_Mstar * Rplanet_by_a**(-5)
+        )
+        k2_p_upper = (
+            (median_domega_dE_prec+fiprec['std_perrs']['domega_dE']) / (15*np.pi)
+            * Mp_by_Mstar * Rplanet_by_a**(-5)
+        )
+        k2_p_lower = (
+            (median_domega_dE_prec-fiprec['std_merrs']['domega_dE']) / (15*np.pi)
+            * Mp_by_Mstar * Rplanet_by_a**(-5)
+        )
+        print('implied planet love number k2,p: '
+              '{:.3f} +({:.3f}) -({:.3f})'.
+             format(k2_p_median,
+                    k2_p_upper,
+                    k2_p_lower))
 
-    ##########
-    print('\nprecession model maxlike parameters\n')
-    print('t0 [min] = {:.4f}'.
-          format(theta_maxlike_precession[0])
-    )
-    print('P [day] = {:.9f}'.
-          format(theta_maxlike_precession[1]/(24*60))
-    )
-    print('e = {:.3e}'.
-          format(theta_maxlike_precession[2])
-    )
-    print('omega0 = {:.2f}'.
-          format(theta_maxlike_precession[3])
-    )
-    print('domega_dE = {:.3e}'.
-          format(theta_maxlike_precession[4])
-    )
-    # domega_dt = 1/P * domega_dE
-    period_yr = theta_maxlike_precession[1]/(24*60*365.2425)
-    domega_dt_in_deg_per_year = (
-        (((1/period_yr)*theta_maxlike_precession[4])*u.rad).to(u.deg).value
-    )
-    print('in deg/year, domega_dt = {:.2f}'.
-          format(domega_dt_in_deg_per_year)
-    )
-    print('implying precession period {:.1f} years'.
-          format(360/domega_dt_in_deg_per_year))
+        ##########
+        print('\nprecession model maxlike parameters\n')
+        print('t0 [min] = {:.4f}'.
+              format(theta_maxlike_precession[0])
+        )
+        print('P [day] = {:.9f}'.
+              format(theta_maxlike_precession[1]/(24*60))
+        )
+        print('e = {:.3e}'.
+              format(theta_maxlike_precession[2])
+        )
+        print('omega0 = {:.2f}'.
+              format(theta_maxlike_precession[3])
+        )
+        print('domega_dE = {:.3e}'.
+              format(theta_maxlike_precession[4])
+        )
+        # domega_dt = 1/P * domega_dE
+        period_yr = theta_maxlike_precession[1]/(24*60*365.2425)
+        domega_dt_in_deg_per_year = (
+            (((1/period_yr)*theta_maxlike_precession[4])*u.rad).to(u.deg).value
+        )
+        print('in deg/year, domega_dt = {:.2f}'.
+              format(domega_dt_in_deg_per_year)
+        )
+        print('implying precession period {:.1f} years'.
+              format(360/domega_dt_in_deg_per_year))
 
 
     ##########################################
     # check if these values are at all a good fit to the data!
     theta_bestfit_linear = [median_t0_2d, median_period_2d]
     theta_bestfit_quad = [median_t0_3d, median_period_3d, median_quadterm_3d]
-    theta_bestfit_prec = [median_t0_prec, median_Ps_prec, median_e_prec,
-                          median_omega0_prec, median_domega_dE_prec ]
+    if run_precession_model:
+        theta_bestfit_prec = [median_t0_prec, median_Ps_prec, median_e_prec,
+                              median_omega0_prec, median_domega_dE_prec ]
+    else:
+        theta_bestfit_prec = None
     plot_maxlikelihood_OminusC(x, y, sigma_y, theta_bestfit_linear,
                                theta_bestfit_quad, theta_bestfit_prec,
                                savpath=savdir+'data_bestfit_OminusC.png',
@@ -1658,9 +1737,10 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     _, AIC_quad, BIC_quad = (
         chi2_bestfit_posterior(2, data, theta_bestfit_quad, data_occ=data_occ)
     )
-    _, AIC_prec, BIC_prec = (
-        chi2_bestfit_precession(data, theta_bestfit_prec, data_occ=data_occ)
-    )
+    if run_precession_model:
+        _, AIC_prec, BIC_prec = (
+            chi2_bestfit_precession(data, theta_bestfit_prec, data_occ=data_occ)
+        )
 
     print('-----linear vs quad-----')
     print('delta_AIC = AIC_linear-AIC_quad = {:.2f}'.format(AIC_linear-AIC_quad))
@@ -1668,28 +1748,48 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
           format(np.exp(BIC_linear-BIC_quad)/2))
 
-    print('-----quad vs precession-----')
-    print('delta_AIC = AIC_prec-AIC_quad = {:.2f}'.format(AIC_prec-AIC_quad))
-    print('delta_BIC = BIC_prec-BIC_quad = {:.2f}'.format(BIC_prec-BIC_quad))
-    print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
-          format(np.exp(BIC_prec-BIC_quad)/2))
-    print('see Kass & Raftery 1995 for interpretation')
+    if run_precession_model:
+        print('-----quad vs precession-----')
+        print('delta_AIC = AIC_prec-AIC_quad = {:.2f}'.format(AIC_prec-AIC_quad))
+        print('delta_BIC = BIC_prec-BIC_quad = {:.2f}'.format(BIC_prec-BIC_quad))
+        print('approx Bayes Factor = exp(deltaBIC/2) = {:.2e}'.
+              format(np.exp(BIC_prec-BIC_quad)/2))
+        print('see Kass & Raftery 1995 for interpretation')
 
     # NOTE: If you wanted to compute proper Bayes factors, you would need to do
     # a big integral for the evidence. Skip this.
+
+
+def get_plmass_given_K(a, Mstar, sini, K, e=0):
+    # Lovis and Fischer, eq 12.
+    Mp = K * (const.G/(1-e**2))**(-1/2) * sini**(-1) * Mstar**(1/2) * a**(1/2)
+
+    return Mp.to(u.Mjup)
 
 
 if __name__ == "__main__":
 
     np.random.seed(42)
 
-    plname = 'WASP-4b'
+    plname = 'WASP-18b'#'WASP-4b'
 
-    # Mstar, Rstar, Mplanet, Rplanet = 0.89, 0.92, 1.216, 1.33 # OLD: Petrucci+ 2013, table 3.
-    Mstar, Rstar, Mplanet, Rplanet = 0.867, 0.893, 1.189, 1.314 # USED: my table 1
+    if plname == 'WASP-4b':
+        # Mstar, Rstar, Mplanet, Rplanet = 0.89, 0.92, 1.216, 1.33 # OLD: Petrucci+ 2013, table 3.
+        Mstar, Rstar, Mplanet, Rplanet = 0.867, 0.893, 1.189, 1.314 # USED: my table 1
+
+    elif plname == 'WASP-18b':
+        # Shporer+ 2018 tables.
+        K = 1816.6*u.m/u.s
+        i = 84.31*u.deg
+        sini = np.sin(i)
+        Mstar, Rstar, Rplanet = 1.46*u.Msun, 1.26*u.Rsun, 1.192*u.Rjup
+        a = 0.02045*u.au
+        Mp = get_plmass_given_K(a, Mstar, sini, K, e=0.0091)
+        Mstar, Rstar, Rplanet, Mplanet = 1.46, 1.26, 1.192, Mp.value
+        run_precession_model = False
 
     overwrite = 1 # NOTE change sometimes
-    n_steps = 7000
+    n_steps = 5000
     n_steps_prec = 20000
     use_manual_precession = 1
 
@@ -1700,4 +1800,5 @@ if __name__ == "__main__":
     main(plname, n_steps=n_steps, overwrite=overwrite, Mstar=Mstar,
          Rstar=Rstar, Mplanet=Mplanet, Rplanet=Rplanet,
          n_steps_prec=n_steps_prec,
-         use_manual_precession=use_manual_precession)
+         use_manual_precession=use_manual_precession,
+         run_precession_model=run_precession_model)
