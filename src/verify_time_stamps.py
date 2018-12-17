@@ -1006,7 +1006,7 @@ def make_OminusC_precision_checks(overwrite = 1, n_mcmc_steps = 5000):
         evaluate_mcmc_output(rdict, plname, pkldir, burninpct)
 
 
-def given_offset_output_quote_result(desired_offset=-77.68):
+def given_offset_output_quote_result(desired_offset=None):
 
     from scipy.interpolate import interp1d
     plnames = np.sort(['WASP-18b', 'WASP-46b', 'WASP-5b', 'WASP-4b', 'WASP-29b',
@@ -1069,11 +1069,10 @@ def main(do_mcmc=0, overwrite=0, n_mcmc_steps=10):
 
 if __name__=="__main__":
 
-    # if running
+    # if running. 40,000 for WASP-6b because small N statistics.
     do_mcmc = 1
     overwrite = 1
-    n_mcmc_steps = 10
-    #FIXME
+    n_mcmc_steps = 5000
 
     # # if evaluating
     # do_mcmc = 0
