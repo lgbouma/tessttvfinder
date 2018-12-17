@@ -14,3 +14,7 @@ results/manual_plus_tess_O-C_vs_epoch/*png
 results/manual_plus_tess_O-C_vs_epoch/*csv
 results/lc_analysis/*
 src/measure_*_times.sh
+results/WASP*
+results/manual_plus_tess*
+results/model_comparison*
+results/verify_tess_timestamps*
