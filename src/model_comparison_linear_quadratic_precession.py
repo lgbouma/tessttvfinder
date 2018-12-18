@@ -204,7 +204,7 @@ def plot_maxlikelihood_OminusC(
                 quadratic_fit(theta_quadratic, xfit)
                     - linear_fit(theta_linear, xfit),
                 label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        if theta_precession:
+        if isinstance(theta_precession, np.ndarray):
             a0.plot(xfit,
                     precession_fit(theta_precession, xfit)
                         - linear_fit(theta_linear, xfit),
@@ -221,7 +221,7 @@ def plot_maxlikelihood_OminusC(
                quadratic_fit(theta_quadratic, xfit, x_occ=xfit_occ)[1]
                    - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
                label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        if theta_precession:
+        if isinstance(theta_precession, np.ndarray):
             a1.plot(xfit_occ,
                     precession_fit(theta_precession, xfit, x_occ=xfit_occ)[1]
                         - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
@@ -252,7 +252,7 @@ def plot_maxlikelihood_OminusC(
                 polynomial_fit(theta_quadratic, xfit)
                     - polynomial_fit(theta_linear, xfit),
                 label='{:s} quadratic fit'.format(legendstr), zorder=-1)
-        if theta_precession:
+        if isinstance(theta_precession, np.ndarray):
             ax.plot(xfit,
                     precession_fit(theta_precession, xfit)
                         - polynomial_fit(theta_linear, xfit),
@@ -1771,11 +1771,12 @@ if __name__ == "__main__":
 
     np.random.seed(42)
 
-    plname = 'WASP-18b'#'WASP-4b'
+    plname = 'WASP-4b' #'WASP-18b'
 
     if plname == 'WASP-4b':
         # Mstar, Rstar, Mplanet, Rplanet = 0.89, 0.92, 1.216, 1.33 # OLD: Petrucci+ 2013, table 3.
-        Mstar, Rstar, Mplanet, Rplanet = 0.867, 0.893, 1.189, 1.314 # USED: my table 1
+        Mstar, Rstar, Mplanet, Rplanet = 0.864, 0.893, 1.186, 1.321 # USED: my table 1
+        run_precession_model = True
 
     elif plname == 'WASP-18b':
         # Shporer+ 2018 tables.
