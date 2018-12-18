@@ -424,22 +424,22 @@ def manual_verify_time_stamps(lcname, lcd):
     sc_time = time - timecorr
 
     # you have two times with unambiguous JD start dates.
-    tstart_tjd = main_hdr['TSTART'] # observation start time in TJD
-    tstart_jd_tdb = tstart_tjd + 2457000
+    tstart_btjd = main_hdr['TSTART'] # observation start time in BTJD
+    tstart_tjd_tdb = tstart_btjd + 2457000 # observation start time in TJD_TDB
     tstart_jd_utc = main_hdr['DATE-OBS'] # TSTART as UTC calendar date, JD_UTC.
     t0 = Time(tstart_jd_utc, format='isot', scale='utc')
 
-    tstop_tjd = main_hdr['TSTOP'] # observation start time in TJD
-    tstop_jd_tdb = tstop_tjd + 2457000
+    tstop_btjd = main_hdr['TSTOP'] # observation start time in TJD
+    tstop_bjd_tdb = tstop_btjd + 2457000
     tstop_jd_utc = main_hdr['DATE-END'] # TSTOP as UTC calendar date
     t1 = Time(tstop_jd_utc, format='isot', scale='utc')
 
-    print(tstart_tjd)
-    print(tstart_jd_tdb)
+    print(tstart_btjd)
+    print(tstart_tjd_tdb)
     print(tstart_jd_utc)
     print('\n---- t0 JD UTC: {} ----\n'.format(t0.jd))
-    print(tstop_tjd)
-    print(tstop_jd_tdb)
+    print(tstop_btjd)
+    print(tstop_bjd_tdb)
     print(tstop_jd_utc)
     print('\n---- t1 JD UTC: {} ----\n'.format(t1.jd))
 
