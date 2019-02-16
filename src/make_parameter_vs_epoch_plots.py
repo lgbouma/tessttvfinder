@@ -42,6 +42,8 @@ from ephemerides_utilities import get_half_epochs_given_occultation_times
 
 from scipy.optimize import curve_fit
 
+from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
+
 def arr(x):
     return np.array(x)
 
@@ -98,7 +100,8 @@ def scatter_plot_parameter_vs_epoch_manual(
     df, yparam, datafile, init_period,
     overwrite=False, savname=None, ylim=None,
     req_precision_minutes = 10, xlim=None,
-    occultationtimeglob=None):
+    occultationtimecsv=None,
+    correcterrorbars=False):
     '''
     args:
         df -- made by get_ETD_params
@@ -128,6 +131,16 @@ def scatter_plot_parameter_vs_epoch_manual(
     sel = np.isfinite(err_tmid) & np.isfinite(tmid)
     sel &= (err_tmid*24*60 < req_precision_minutes)
 
+    if plname=='WASP-18b':
+        badlist = arr([
+        '../results/tess_lightcurve_fit_parameters/100100827/sector_2/100100827_mandelagol_and_line_fit_empiricalerrs_t005.pickle',
+        '../results/tess_lightcurve_fit_parameters/100100827/sector_2/100100827_mandelagol_and_line_fit_empiricalerrs_t022.pickle',
+        '../results/tess_lightcurve_fit_parameters/100100827/sector_3/100100827_mandelagol_and_line_fit_empiricalerrs_t004.pickle',
+        '../results/tess_lightcurve_fit_parameters/100100827/sector_3/100100827_mandelagol_and_line_fit_empiricalerrs_t010.pickle'
+        ])
+
+        sel &= ~np.isin(df['picklepath'], badlist)
+
     epoch, init_t0 = get_epochs_given_midtimes_and_period(
         tmid[sel], init_period, err_t_mid = err_tmid[sel], verbose=True
     )
@@ -135,8 +148,8 @@ def scatter_plot_parameter_vs_epoch_manual(
     # calculate epochs for occultation time measurements, so they can be used
     # in model comparison. (don't use them for determining least squares t0 or
     # period, because they are usually rattier).
-    if isinstance(occultationtimeglob, str):
-        occ_file = os.path.join('../data/',occultationtimeglob)
+    if isinstance(occultationtimecsv, str):
+        occ_file = os.path.join('../data/',occultationtimecsv)
     else:
         occ_file = None
     if occ_file:
@@ -144,21 +157,28 @@ def scatter_plot_parameter_vs_epoch_manual(
         # tmid = t0 + P*E
         # tocc = t0 + P*E + P/2
         occ_df = pd.read_csv(occ_file, sep=';', comment=None)
-        t_occ_no_ltt = np.array(occ_df['tocc_BJD_TDB_no_ltt'])
-        err_t_occ = np.array(occ_df['err_tocc'])
 
-        if plname=='WASP-4b':
-            semimaj = 0.0228*u.au # Petrucci+ 2013, table 3
-            ltt_corr = (2*semimaj/constants.c).to(u.second)
+        if 'tocc_BJD_TDB_w_ltt' in occ_df:
+            print('USING OCC TIMES W/ LTT ALREADY ACCOUNTED')
+            t_occ_ltt_corrected = np.array(occ_df['tocc_BJD_TDB_w_ltt'])
+            err_t_occ = np.array(occ_df['err_tocc'])
+
         else:
-            raise NotImplementedError
+            t_occ_no_ltt = np.array(occ_df['tocc_BJD_TDB_no_ltt'])
+            err_t_occ = np.array(occ_df['err_tocc'])
 
-        print('subtracting {:.3f} for occultation light travel time'.
-              format(ltt_corr))
+            if plname=='WASP-4b':
+                semimaj = 0.0228*u.au # Petrucci+ 2013, table 3
+                ltt_corr = (2*semimaj/constants.c).to(u.second)
+            else:
+                raise NotImplementedError('need to implement ltt correction')
 
-        t_occ_corrected = t_occ_no_ltt - (ltt_corr.to(u.day)).value
+            print('subtracting {:.3f} for occultation light travel time'.
+                  format(ltt_corr))
 
-        occ_epoch_full = (t_occ_corrected - init_t0 - init_period/2) / init_period
+            t_occ_ltt_corrected = t_occ_no_ltt - (ltt_corr.to(u.day)).value
+
+        occ_epoch_full = (t_occ_ltt_corrected - init_t0 - init_period/2) / init_period
 
         occ_epoch = np.round(occ_epoch_full, 1)
 
@@ -167,7 +187,7 @@ def scatter_plot_parameter_vs_epoch_manual(
 
         f_occ_epochs = np.isfinite(occ_epoch)
 
-        tocc = t_occ_corrected[f_occ_epochs]
+        tocc = t_occ_ltt_corrected[f_occ_epochs]
         err_tocc = err_t_occ[f_occ_epochs]
         occ_references = np.array(occ_df['reference'])[f_occ_epochs]
         occ_whereigot = np.array(occ_df['where_I_got_time'])[f_occ_epochs]
@@ -242,15 +262,20 @@ def scatter_plot_parameter_vs_epoch_manual(
             f, chi2_corrected, chi2_reduced_corrrected,
             savpath=tesscheckpath)
 
-        # finally, update the errors to be used in the analysis!
-        # NOTE: this assumes the TESS measurements are always being
-        # appended at the end!
-        print('WRN! ERROR BARS BEFORE EMPIRICAL CORRECTION')
-        print(sigma)
-        sigma_not_tess = sigma[~(sel_references == 'me')]
-        sigma = np.concatenate((sigma_not_tess, sigma_tess_corrected))
-        print('WRN! ERROR BARS AFTER EMPIRICAL CORRECTION')
-        print(sigma)
+        # finally, (optionally) update the errors to be used in the analysis!
+        # NOTE: this assumes the TESS measurements are always being appended at
+        # the end! however TESS data is pretty much always the newest for this
+        # project, so this is OK.
+        if correcterrorbars:
+            print('WRN! ERROR BARS BEFORE EMPIRICAL CORRECTION')
+            print(sigma)
+            sigma_not_tess = sigma[~(sel_references == 'me')]
+            sigma = np.concatenate((sigma_not_tess, sigma_tess_corrected))
+            print('WRN! ERROR BARS AFTER EMPIRICAL CORRECTION')
+            print(sigma)
+        else:
+            sigma_not_tess = sigma[~(sel_references == 'me')]
+            sigma = np.concatenate((sigma_not_tess, sigma_tess))
 
 
     t0_offset = int(np.round(np.nanmedian(ydata), -3))
@@ -474,20 +499,17 @@ def get_ETD_params(fglob='../data/*_ETD.txt'):
     return d
 
 
-def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
-                               etd_glob='../data/*_ETD.txt',
-                               tesstimecsv=None,
-                               asastimecsv=None):
+def make_transit_time_df(plname, manualtimecsv=None, tesstimecsv=None,
+                         asastimecsv=None):
     '''
-    Make a dataframe of both the manually-curated transit times, and the
-    transit times measured from TESS lightcurves.
+    Make a dataframe of the manually-curated transit times (if csv name
+    passed), and the transit times measured from TESS lightcurves.
 
-    Match against ETD to get initiali guess of period.  Initial guess of t0 is
-    the median time.
+    Match against exoplanetarchive to get initial guess of period.  Initial
+    guess of t0 is the median time.
 
     args:
-        manualtimeglob (str): pattern to the manually-curated transit time csv
-        file
+        manualtimecsv (str): path to the manually-curated transit time csv file
 
         tesstimecsv (str): path to the csv of measured TESS transit times
 
@@ -497,75 +519,69 @@ def get_manual_and_TESS_ttimes(manualtimeglob='../data/*_manual.csv',
         dict with dataframe, filename, and metadata.
     '''
 
-    man_fnames = glob(manualtimeglob)
-    if len(man_fnames) < 1:
-        raise AssertionError('did not find manual time file names')
-    etd_fnames = glob(etd_glob)
-    if len(etd_fnames) < 1:
-        raise AssertionError('did not find etd files')
 
     d = {}
-    for k in ['fname','init_period','df', 'init_t0','etd_fname']:
+    for k in ['fname','init_period','df', 'init_t0']:
         d[k] = []
 
     # Using the manually curated times, match to the ETD names in order to get
     # their preliminary fit period.
-    man_pl_names = [fname.split("/")[-1].split("_")[0] for fname in man_fnames]
-    etd_pl_names = [etd_fname.split("_")[1] for etd_fname in etd_fnames]
+    eatab = NasaExoplanetArchive.get_confirmed_planets_table()
 
-    gd_man_names = np.isin(man_pl_names, etd_pl_names)
-    gd_etd_names = np.isin(etd_pl_names, man_pl_names)
+    thispl = eatab[eatab['NAME_LOWERCASE'] == plname.lower()]
 
-    int_man_fnames = np.sort(arr(man_fnames)[gd_man_names])
-    int_etd_fnames = np.sort(arr(etd_fnames)[gd_etd_names])
-    if len(int_etd_fnames) < 1:
-        raise AssertionError(
-            'didnt find etd files. make e.g. ../data/20180826_WASP-4b_ETD.txt')
+    if len(thispl) != 1:
+        raise AssertionError('expected a single match from exoplanet archive')
 
-    for man_fname, etd_fname in list(zip(int_man_fnames, int_etd_fnames)):
+    init_period = float(thispl['pl_orbper'].value)
 
-        # get the period reported in ETD
-        with open(etd_fname, 'r', errors='ignore') as f:
-            lines = f.readlines()
-        pline = [l for l in lines if 'Per =' in l]
-        assert len(pline) == 1
-        init_period = search('Per = {:f}', pline[0])[0]
+    # read in the manually curated data table
+    df = None
+    if manualtimecsv:
+        df = pd.read_csv(manualtimecsv, sep=';', comment=None)
 
-        # read in the manually curated data table
-        df = pd.read_csv(man_fname, sep=';', comment=None)
+    if tesstimecsv:
+        tf = pd.read_csv(tesstimecsv)
 
-        if tesstimecsv:
-            tf = pd.read_csv(tesstimecsv)
-
-            tf['where_I_got_time'] = (
-                np.repeat('measured_from_SPOC_alert_LC', len(tf['BJD_TDB']))
-            )
-            tf['reference'] = np.repeat('me', len(tf['BJD_TDB']))
-            tf['epoch'] = np.repeat(np.nan, len(tf['BJD_TDB']))
-            tf['comment'] = np.repeat('', len(tf['BJD_TDB']))
-            tf.rename(index=str,columns={'BJD_TDB':'t0_BJD_TDB',
-                                         't0_bigerr':'err_t0'}, inplace=True)
+        tf['where_I_got_time'] = (
+            np.repeat('measured_from_SPOC_alert_LC', len(tf['BJD_TDB']))
+        )
+        tf['reference'] = np.repeat('me', len(tf['BJD_TDB']))
+        tf['epoch'] = np.repeat(np.nan, len(tf['BJD_TDB']))
+        tf['comment'] = np.repeat('', len(tf['BJD_TDB']))
+        tf.rename(index=str,columns={'BJD_TDB':'t0_BJD_TDB',
+                                     't0_bigerr':'err_t0'}, inplace=True)
+        if isinstance(df, pd.DataFrame):
             df = pd.concat((df, tf),join='outer')
+        else:
+            df = tf
 
-            outname = man_fname.replace('.csv','_and_TESS_times.csv')
-            df.to_csv(outname, index=False, sep=';')
-            print('saved {:s}'.format(outname))
+        if isinstance(manualtimecsv, str):
+            outname = manualtimecsv.replace('.csv','_and_TESS_times.csv')
+        else:
+            outdir = os.path.dirname(tesstimecsv)
+            outname = os.path.join(
+                outdir, '{}_TESS_times_only.csv'.format(plname)
+            )
+        df.to_csv(outname, index=False, sep=';')
+        print('saved {:s}'.format(outname))
 
-        if asastimecsv:
-            # manually curated with extra ASAS time
-            at = pd.read_csv(asastimecsv, sep=';', comment=None)
-            df = at
+    if asastimecsv:
+        # manually curated with extra ASAS time
+        at = pd.read_csv(asastimecsv, sep=';', comment=None)
+        df = at
 
-        # set t0 as the median time
-        t0 = np.nanmedian(df['t0_BJD_TDB'])
+    # set t0 as the median time
+    t0 = np.nanmedian(df['t0_BJD_TDB'])
 
-        d['fname'].append(man_fname)
-        d['etd_fname'].append(etd_fname)
-        d['init_period'].append(init_period)
-        d['df'].append(df)
-        d['init_t0'].append(t0)
+    csvname = manualtimecsv if isinstance(manualtimecsv,str) else tesstimecsv
+    d['fname'].append(csvname)
+    d['init_period'].append(init_period)
+    d['df'].append(df)
+    d['init_t0'].append(t0)
 
     return d
+
 
 
 def make_all_ETD_plots():
@@ -583,38 +599,39 @@ def make_all_ETD_plots():
             scatter_plot_parameter_vs_epoch(df, yparam, fname, init_period,
                                             init_t0, overwrite=True)
 
-def make_manually_curated_OminusC_plots(datadir='../data/',
-                                        manualtimeglob=None,
-                                        tesstimeglob=None,
-                                        asastimeglob=None,
-                                        occultationtimeglob=None,
+def make_manually_curated_OminusC_plots(plname, datadir='../data/',
+                                        manualtimecsv=None,
+                                        tesstimecsv=None,
+                                        asastimecsv=None,
+                                        occultationtimecsv=None,
                                         ylim=None,
                                         xlim=None,
                                         savname=None,
-                                        req_precision_minutes=10
+                                        req_precision_minutes=10,
+                                        correcterrorbars=False
                                         ):
     '''
     make O-C diagrams based on manually-curated times
     '''
 
-    if manualtimeglob:
-        manual_csv = datadir+manualtimeglob
+    if manualtimecsv:
+        manual_csv = os.path.join(datadir,manualtimecsv)
     else:
         manual_csv = None
 
-    if tesstimeglob:
-        tesstimecsv = datadir+tesstimeglob
+    if tesstimecsv:
+        tesstimecsv = os.path.join(datadir,tesstimecsv)
     else:
         tesstimecsv = None
 
-    if asastimeglob:
-        asastimecsv = datadir+asastimeglob
+    if asastimecsv:
+        asastimecsv = os.path.join(datadir,asastimecsv)
     else:
         asastimecsv = None
 
-    d = get_manual_and_TESS_ttimes(manualtimeglob=manual_csv,
-                                   tesstimecsv=tesstimecsv,
-                                   asastimecsv=asastimecsv)
+    d = make_transit_time_df(plname, manualtimecsv=manual_csv,
+                             tesstimecsv=tesstimecsv,
+                             asastimecsv=asastimecsv)
 
     for df, fname, init_period in list(
         zip(d['df'], d['fname'], d['init_period'])
@@ -652,7 +669,8 @@ def make_manually_curated_OminusC_plots(datadir='../data/',
             plname,
             df, yparam, fname, init_period, overwrite=True, savname=savname,
             ylim=ylim, req_precision_minutes = req_precision_minutes,
-            xlim=xlim, occultationtimeglob=occultationtimeglob
+            xlim=xlim, occultationtimecsv=occultationtimecsv,
+            correcterrorbars=correcterrorbars
         )
 
 if __name__ == '__main__':
@@ -660,79 +678,82 @@ if __name__ == '__main__':
     make_all_ETD=0
     make_manually_curated=1
 
-    occultationtimeglob = None
-    asastimeglob = None
+    occultationtimecsv = None
+    asastimecsv = None
     ylim, xlim = None, None
     req_precision_minutes = 5
 
     # # WASP-45b
     # plname = 'WASP-45b'
-    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '120610833_measured_TESS_times_9_transits.csv'
+    # tesstimecsv = '120610833_measured_TESS_times_9_transits.csv'
 
     # # WASP-6b
     # plname = 'WASP-6b'
-    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '204376737_measured_TESS_times_8_transits.csv'
+    # tesstimecsv = '204376737_measured_TESS_times_8_transits.csv'
 
     # # WASP-29b
     # plname = 'WASP-29b'
-    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '183537452_measured_TESS_times_7_transits.csv'
+    # tesstimecsv = '183537452_measured_TESS_times_7_transits.csv'
 
     # # WASP-5b
     # plname = 'WASP-5b'
-    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '184240683_measured_TESS_times_16_transits.csv'
+    # tesstimecsv = '184240683_measured_TESS_times_16_transits.csv'
     # req_precision_minutes = 30
 
     # # WASP-4b double-check
     # plname = 'WASP-4b'
-    # manualtimeglob = 'WASP-4b_manual_doublechecking.csv'
-    # tesstimeglob = '402026209_measured_TESS_times_18_transits_doublechecking.csv'
+    # manualtimecsv = 'WASP-4b_manual_doublechecking.csv'
+    # tesstimecsv = '402026209_measured_TESS_times_18_transits_doublechecking.csv'
     # savname = 'WASP-4b_doublechecking_TESS_times_O-C_vs_epoch.png'
-    # tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
+    # tesstimecsv = '402026209_measured_TESS_times_20_transits.csv'
     # ylim = [-3.2,1.2]
 
     # # WASP-4b TESS only
-    # manualtimeglob = 'WASP-4b_manual.csv'
-    # tesstimeglob = '402026209_measured_TESS_times_18_transits.csv'
+    # manualtimecsv = 'WASP-4b_manual.csv'
+    # tesstimecsv = '402026209_measured_TESS_times_18_transits.csv'
     # savname = 'WASP-4b_TESS_times_O-C_vs_epoch.png'
     # ylim = None # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = [2420,2480]
 
-    # WASP-4b
-    plname = 'WASP-4b'
-    manualtimeglob = '{:s}_manual.csv'.format(plname)
-    occultationtimeglob = '{:s}_manual_occultations.csv'.format(plname)
-    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    tesstimeglob = '402026209_measured_TESS_times_20_transits.csv'
-    req_precision_minutes = 2 # get a junky one otherwise!
-    ylim = [-2.5,1.5]
+    # # WASP-4b
+    # plname = 'WASP-4b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimecsv = '402026209_measured_TESS_times_20_transits.csv'
+    # req_precision_minutes = 2 # get a junky one otherwise!
+    # ylim = [-2.5,1.5]
+    # correcterrorbars = True
 
     # # WASP-18b just TESS times... do you see nice TTVs?
-    # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
-    # savname = 'WASP-18b_TESS_times_O-C_vs_epoch.png'
+    # plname = 'WASP-18b'
+    # manualtimecsv = None#'WASP-18b_manual_hipparcos_and_ASAS.csv'
+    # tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
+    # savname = 'WASP-18b_TESS_times_O-C_vs_epoch_badtransitsremoved.png'
     # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
-    # xlim = [-20,60]
+    # xlim = [-40,40]
     # req_precision_minutes = 30
+    # correcterrorbars = False
 
     # # WASP-18b, with ASAS and hipparcos point.
-    # manualtimeglob = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
+    # manualtimecsv = 'WASP-18b_manual_hipparcos_and_ASAS.csv'
+    # tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
     # savname = 'WASP-18b_all_times_O-C_vs_epoch.png'
     # ylim = [-30,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
     # req_precision_minutes = 30
 
     # # WASP-18b, with ASAS point.
-    # manualtimeglob = 'WASP-18b_manual_and_ASAS_times.csv'
-    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
+    # manualtimecsv = 'WASP-18b_manual_and_ASAS_times.csv'
+    # tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
     # savname = 'WASP-18b_manual_and_ASAS_times_O-C_vs_epoch.png'
     # ylim = [-3,10] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
@@ -740,31 +761,46 @@ if __name__ == '__main__':
 
     # # WASP-18b, no ASAS or Hipparcos point.
     # plname = 'WASP-18b'
-    # manualtimeglob = '{:s}_manual_no_hipparcos.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual_no_hipparcos.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '100100827_measured_TESS_times_48_transits.csv'
-    # asastimeglob = None # 'WASP-18b_manual_and_ASAS_times.csv'
+    # tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
+    # asastimecsv = None # 'WASP-18b_manual_and_ASAS_times.csv'
     # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
     # xlim = None
     # req_precision_minutes = 10
+    # correcterrorbars = False
+
+    # WASP-18b, no ASAS or Hipparcos point, but with occultations (Avi final).
+    plname = 'WASP-18b'
+    manualtimecsv = '{:s}_manual_no_hipparcos.csv'.format(plname)
+    occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    savname = '{:s}_literature_tr-occ_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
+    asastimecsv = None # 'WASP-18b_manual_and_ASAS_times.csv'
+    ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    xlim = None
+    req_precision_minutes = 10
+    correcterrorbars = False
 
     # # WASP-46b
     # plname = 'WASP-46b'
-    # manualtimeglob = '{:s}_manual.csv'.format(plname)
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimeglob = '231663901_measured_TESS_times_18_transits.csv'
+    # tesstimecsv = '231663901_measured_TESS_times_18_transits.csv'
 
     if make_all_ETD:
         make_all_ETD_plots()
 
     if make_manually_curated:
         make_manually_curated_OminusC_plots(
-            manualtimeglob=manualtimeglob,
-            tesstimeglob=tesstimeglob,
-            asastimeglob=asastimeglob,
-            occultationtimeglob=occultationtimeglob,
+            plname,
+            manualtimecsv=manualtimecsv,
+            tesstimecsv=tesstimecsv,
+            asastimecsv=asastimecsv,
+            occultationtimecsv=occultationtimecsv,
             ylim=ylim,
             xlim=xlim,
             savname=savname,
-            req_precision_minutes=req_precision_minutes
+            req_precision_minutes=req_precision_minutes,
+            correcterrorbars=correcterrorbars
         )
