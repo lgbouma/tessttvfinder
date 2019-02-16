@@ -875,6 +875,8 @@ def fit_phased_transit_mandelagol_and_line(
         this_oot_time = time[this_window_inds][this_window_oot]
         this_oot_flux = flux[this_window_inds][this_window_oot]
 
+        if len(this_oot_flux) == len(this_oot_time) == 0:
+            continue
         p = Legendre.fit(this_oot_time, this_oot_flux, 1)
         coeffs = p.coef
         this_window_fit_flux = p(time[this_window_inds])
