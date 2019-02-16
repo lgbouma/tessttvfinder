@@ -187,6 +187,74 @@ def plot_maxlikelihood_OminusC(
         isinstance(y_occ,np.ndarray)
         and
         isinstance(sigma_y_occ,np.ndarray)
+        and
+        'WASP-18b' in savpath
+        and
+        legendstr == 'median MCMC'
+    ):
+        plt.close('all')
+        xfit = np.linspace(np.min(x)-1000, np.max(x)+1000, 1000)
+        xfit_occ = np.linspace(np.min(x)-1000, np.max(x)+1000, 1000)
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6,4))
+
+        _, caps, bars = ax.errorbar(x,
+                    y-linear_fit(theta_linear, x),
+                    sigma_y, marker='.', color='k', ecolor='gray', zorder=2, capsize=0,
+                    capthick=0, lw=1, ls='none'
+                    )
+        [bar.set_alpha(0.8) for bar in bars]
+        [cap.set_alpha(0.8) for cap in caps]
+
+        ax.plot(xfit,
+                linear_fit(theta_linear, xfit)
+                    - linear_fit(theta_linear, xfit),
+                label='Best linear fit', zorder=-2)
+        ax.plot(xfit,
+                quadratic_fit(theta_quadratic, xfit)
+                    - linear_fit(theta_linear, xfit),
+                label='Best quadratic fit', zorder=-1)
+
+        _, caps, bars = ax.errorbar(x_occ,
+                   y_occ-linear_fit(theta_linear, x, x_occ=x_occ)[1],
+                   sigma_y_occ, marker='.', color='gray', ecolor='gray',
+                   zorder=2, capsize=0, capthick=0, lw=1, ls='none')
+        [bar.set_alpha(0.3) for bar in bars]
+        [cap.set_alpha(0.3) for cap in caps]
+
+        _,caps,bars = ax.errorbar(42,42,1,
+                                  marker='.', color='black',
+                                  ecolor='gray', zorder=-3,
+                                  label='Transits', ls='none')
+        [bar.set_alpha(0.8) for bar in bars]
+        [cap.set_alpha(0.8) for cap in caps]
+
+        _,caps,bars = ax.errorbar(42,42,1, marker='.', color='gray',
+                                  ecolor='gray', zorder=-3,
+                                  label='Occultations', ls='none')
+        [bar.set_alpha(0.3) for bar in bars]
+        [cap.set_alpha(0.3) for cap in caps]
+
+        ax.legend(loc='best', fontsize='x-small')
+        ax.get_yaxis().set_tick_params(which='both', direction='in')
+        ax.get_xaxis().set_tick_params(which='both', direction='in')
+
+        ax.set_ylim((-3,3))
+        ax.set_xlim((-4600,1100))
+
+        fig.text(0.5,0, 'Epoch', ha='center')
+        fig.text(0,0.5, 'Deviation from constant period [minutes]', va='center', rotation=90)
+        fig.tight_layout(h_pad=0, w_pad=0)
+        outpath = savpath.replace('.png','_occ-tra.png')
+        fig.savefig(outpath, bbox_inches='tight', dpi=350)
+        print('made {:s}'.format(outpath))
+
+    if (
+        isinstance(x_occ,np.ndarray)
+        and
+        isinstance(y_occ,np.ndarray)
+        and
+        isinstance(sigma_y_occ,np.ndarray)
     ):
         xfit_occ = np.linspace(np.min(x), np.max(x), 1000)
 
@@ -1771,7 +1839,7 @@ if __name__ == "__main__":
 
     np.random.seed(42)
 
-    plname = 'WASP-4b' #'WASP-18b'
+    plname = 'WASP-18b' #'WASP-4b' 
 
     if plname == 'WASP-4b':
         # Mstar, Rstar, Mplanet, Rplanet = 0.89, 0.92, 1.216, 1.33 # OLD: Petrucci+ 2013, table 3.
@@ -1779,14 +1847,14 @@ if __name__ == "__main__":
         run_precession_model = True
 
     elif plname == 'WASP-18b':
-        # Shporer+ 2018 tables.
+        # Shporer+ 2018 tables. Checked 2019/02/16 from overleaf.
         K = 1816.6*u.m/u.s
-        i = 84.31*u.deg
+        i = 84.88*u.deg
         sini = np.sin(i)
-        Mstar, Rstar, Rplanet = 1.46*u.Msun, 1.26*u.Rsun, 1.192*u.Rjup
-        a = 0.02045*u.au
+        Mstar, Rstar, Rplanet = 1.46*u.Msun, 1.26*u.Rsun, 1.191*u.Rjup
+        a = 0.02087*u.au
         Mp = get_plmass_given_K(a, Mstar, sini, K, e=0.0091)
-        Mstar, Rstar, Rplanet, Mplanet = 1.46, 1.26, 1.192, Mp.value
+        Mstar, Rstar, Rplanet, Mplanet = 1.46, 1.26, 1.191, Mp.value
         run_precession_model = False
 
     overwrite = 1 # NOTE change sometimes
@@ -1794,9 +1862,10 @@ if __name__ == "__main__":
     n_steps_prec = 20000
     use_manual_precession = 1
 
-    # overwrite = 0 # NOTE change sometimes
-    # n_steps = 10
-    # n_steps_prec = 10
+    #overwrite = 0 # NOTE change sometimes
+    #n_steps = 1
+    #n_steps_prec = 1
+    #use_manual_precession = 1
 
     main(plname, n_steps=n_steps, overwrite=overwrite, Mstar=Mstar,
          Rstar=Rstar, Mplanet=Mplanet, Rplanet=Rplanet,
