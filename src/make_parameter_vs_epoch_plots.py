@@ -277,7 +277,6 @@ def scatter_plot_parameter_vs_epoch_manual(
             sigma_not_tess = sigma[~(sel_references == 'me')]
             sigma = np.concatenate((sigma_not_tess, sigma_tess))
 
-
     t0_offset = int(np.round(np.nanmedian(ydata), -3))
     savdf = pd.DataFrame(
         {'sel_epoch': xdata,
@@ -774,7 +773,7 @@ if __name__ == '__main__':
     plname = 'WASP-18b'
     manualtimecsv = '{:s}_manual_no_hipparcos.csv'.format(plname)
     occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
-    savname = '{:s}_literature_tr-occ_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
     asastimecsv = None # 'WASP-18b_manual_and_ASAS_times.csv'
     ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
