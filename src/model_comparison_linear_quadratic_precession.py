@@ -656,16 +656,22 @@ def log_prior(theta, plparams, delta_period = 1e-5*24*60, delta_t0 = 3):
 
     Rstar, Mplanet, Mstar, semimaj, nominal_period, nominal_t0 = plparams
     Qstar_low = 1e3
-    Qstar_high = 1e12
+    # Qstar_high = 1e12
 
     theta2_low = (
         -1/2 * nominal_period * 27 * np.pi / (2*Qstar_low) * Mplanet/Mstar
         * (Rstar / semimaj)**5
     ).to(u.minute).value
-    theta2_high = (
-        -1/2 * nominal_period * 27 * np.pi / (2*Qstar_high) * Mplanet/Mstar
-        * (Rstar / semimaj)**5
-    ).to(u.minute).value
+
+    # NOTE: the below prior is what you would use if you are ASSUMING a
+    # negative period derivative. However it is better to let the data speak.
+    # By default, do not assume this. Let Qstar vary from [1e3 to -1e3], in
+    # other words let a positive period derivative be in the prior too.
+    # theta2_high = (
+    #     -1/2 * nominal_period * 27 * np.pi / (2*Qstar_high) * Mplanet/Mstar
+    #     * (Rstar / semimaj)**5
+    # ).to(u.minute).value
+    theta2_high = -theta2_low
 
     # now impose the prior on each parameter
     if len(theta)==2:
@@ -958,9 +964,12 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
     # Get best-fit parameters, their 1-sigma error bars, and the associated
     # limits
     fit_statistics = list(
-        map(lambda v: (v[1], v[2]-v[1], v[1]-v[0], v[0], v[3], v[4]),
+        map(lambda v: (v[1], v[2]-v[1], v[1]-v[0],
+                       v[0], v[3], v[4],
+                       v[5], v[6], v[7]),
             list(zip(*np.percentile(samples,
-                                    [15.85, 50, 84.15, 100-97.73, 100-99.87],
+                                    [15.85, 50, 84.15, 100-97.73, 100-99.87,
+                                     84.15, 97.73, 99.87],
                                     axis=0)
                     )
                 )
@@ -968,7 +977,10 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
     )
 
     (medianparams, std_perrs, std_merrs,
-     onesigma_lower, twosigma_lower, threesigma_lower ) = {},{},{},{},{},{}
+     onesigma_lower, twosigma_lower, threesigma_lower,
+     onesigma_upper, twosigma_upper, threesigma_upper) = (
+         {},{},{},{},{},{},{},{},{}
+     )
     for ix, k in enumerate(fitparamnames):
         medianparams[k] = fit_statistics[ix][0]
         std_perrs[k] = fit_statistics[ix][1]
@@ -976,6 +988,9 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
         onesigma_lower[k] = fit_statistics[ix][3]
         twosigma_lower[k] = fit_statistics[ix][4]
         threesigma_lower[k] = fit_statistics[ix][5]
+        onesigma_upper[k] = fit_statistics[ix][6]
+        twosigma_upper[k] = fit_statistics[ix][7]
+        threesigma_upper[k] = fit_statistics[ix][8]
 
     x, y, sigma_y = data
     if isinstance(data_occ,np.ndarray):
@@ -991,7 +1006,10 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
                 'std_merrs':std_merrs,
                 'onesigma_lower':onesigma_lower,
                 'twosigma_lower':twosigma_lower,
-                'threesigma_lower':threesigma_lower
+                'threesigma_lower':threesigma_lower,
+                'onesigma_upper':onesigma_upper,
+                'twosigma_upper':twosigma_upper,
+                'threesigma_upper':threesigma_upper
             },
             'samplesavpath':samplesavpath,
             'data':{
@@ -1011,7 +1029,10 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
                 'std_merrs':std_merrs,
                 'onesigma_lower':onesigma_lower,
                 'twosigma_lower':twosigma_lower,
-                'threesigma_lower':threesigma_lower
+                'threesigma_lower':threesigma_lower,
+                'onesigma_upper':onesigma_upper,
+                'twosigma_upper':twosigma_upper,
+                'threesigma_upper':threesigma_upper
             },
             'samplesavpath':samplesavpath,
             'data':{
@@ -1596,9 +1617,22 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     onesigma_lower = fi3d['onesigma_lower']
     twosigma_lower = fi3d['twosigma_lower']
     threesigma_lower = fi3d['threesigma_lower']
-    print('0.5 dE/dt > {:.3e} at 1 sigma'.format(onesigma_lower['0.5 dP/dE [min]']))
-    print('0.5 dE/dt > {:.3e} at 2 sigma'.format(twosigma_lower['0.5 dP/dE [min]']))
-    print('0.5 dE/dt > {:.3e} at 3 sigma'.format(threesigma_lower['0.5 dP/dE [min]']))
+    onesigma_upper = fi3d['onesigma_upper']
+    twosigma_upper = fi3d['twosigma_upper']
+    threesigma_upper = fi3d['threesigma_upper']
+
+    for ix, l in enumerate([
+        onesigma_lower['0.5 dP/dE [min]'],
+        twosigma_lower['0.5 dP/dE [min]'],
+        threesigma_lower['0.5 dP/dE [min]']
+    ]):
+        print('0.5 dE/dt > {:.3e} at {} sigma'.format(l, ix+1))
+    for ix, l in enumerate([
+        onesigma_upper['0.5 dP/dE [min]'],
+        twosigma_upper['0.5 dP/dE [min]'],
+        threesigma_upper['0.5 dP/dE [min]']
+    ]):
+        print('0.5 dE/dt < {:.3e} at {} sigma'.format(l, ix+1))
 
     onesigma_lower_dP_dt = (
         2 * onesigma_lower['0.5 dP/dE [min]']
@@ -1615,10 +1649,29 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         /
         median_period_3d
     )
+    onesigma_upper_dP_dt = (
+        2 * onesigma_upper['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
+    twosigma_upper_dP_dt = (
+        2 * twosigma_upper['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
+    threesigma_upper_dP_dt = (
+        2 * threesigma_upper['0.5 dP/dE [min]']
+        /
+        median_period_3d
+    )
 
     print('dP/dt > {:.3e} millisec/yr at 1 sigma'.format(onesigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
     print('dP/dt > {:.3e} millisec/yr at 2 sigma'.format(twosigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
     print('dP/dt > {:.3e} millisec/yr at 3 sigma'.format(threesigma_lower_dP_dt/(u.millisecond/u.yr).cgs.scale))
+
+    print('dP/dt < {:.3e} millisec/yr at 1 sigma'.format(onesigma_upper_dP_dt/(u.millisecond/u.yr).cgs.scale))
+    print('dP/dt < {:.3e} millisec/yr at 2 sigma'.format(twosigma_upper_dP_dt/(u.millisecond/u.yr).cgs.scale))
+    print('dP/dt < {:.3e} millisec/yr at 3 sigma'.format(threesigma_upper_dP_dt/(u.millisecond/u.yr).cgs.scale))
 
     onesigma_lower_Qstar = (
         - 1/onesigma_lower_dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
@@ -1837,12 +1890,25 @@ def get_plmass_given_K(a, Mstar, sini, K, e=0):
 
 if __name__ == "__main__":
 
-    np.random.seed(42)
+    ######################
+    # CHANGED MOST OFTEN #
+    ######################
+    plname = 'WASP-4b' #'WASP-4b' 
 
-    plname = 'WASP-18b' #'WASP-4b' 
+    overwrite = 1 # NOTE change sometimes
+    n_steps = 5000
+    n_steps_prec = 20000
+    use_manual_precession = 1
 
+    #overwrite = 0 # NOTE change sometimes
+    #n_steps = 1
+    #n_steps_prec = 1
+    #use_manual_precession = 1
+
+    ######################
+    # CHANGED LESS OFTEN #
+    ######################
     if plname == 'WASP-4b':
-        # Mstar, Rstar, Mplanet, Rplanet = 0.89, 0.92, 1.216, 1.33 # OLD: Petrucci+ 2013, table 3.
         Mstar, Rstar, Mplanet, Rplanet = 0.864, 0.893, 1.186, 1.321 # USED: my table 1
         run_precession_model = True
 
@@ -1857,16 +1923,10 @@ if __name__ == "__main__":
         Mstar, Rstar, Rplanet, Mplanet = 1.46, 1.26, 1.191, Mp.value
         run_precession_model = False
 
-    overwrite = 1 # NOTE change sometimes
-    n_steps = 5000
-    n_steps_prec = 20000
-    use_manual_precession = 1
-
-    #overwrite = 0 # NOTE change sometimes
-    #n_steps = 1
-    #n_steps_prec = 1
-    #use_manual_precession = 1
-
+    #################
+    # CHANGED LEAST #
+    #################
+    np.random.seed(42)
     main(plname, n_steps=n_steps, overwrite=overwrite, Mstar=Mstar,
          Rstar=Rstar, Mplanet=Mplanet, Rplanet=Rplanet,
          n_steps_prec=n_steps_prec,
