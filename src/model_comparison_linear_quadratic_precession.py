@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 description
 -----
 
@@ -11,7 +11,7 @@ usage
 
 $ python model_comparison_linear_quadratic_precession.py | tee
     ../results/model_comparison/WASP-4b/model_comparison_output.txt
-'''
+"""
 
 from __future__ import division, print_function
 
@@ -235,15 +235,16 @@ def plot_maxlikelihood_OminusC(
         [bar.set_alpha(0.3) for bar in bars]
         [cap.set_alpha(0.3) for cap in caps]
 
-        ax.legend(loc='best', fontsize='x-small')
+        ax.legend(loc='best', fontsize='small')
         ax.get_yaxis().set_tick_params(which='both', direction='in')
         ax.get_xaxis().set_tick_params(which='both', direction='in')
 
         ax.set_ylim((-3,3))
         ax.set_xlim((-4600,1100))
 
-        fig.text(0.5,0, 'Epoch', ha='center')
-        fig.text(0,0.5, 'Deviation from constant period [minutes]', va='center', rotation=90)
+        fig.text(0.5,0, 'Epoch', ha='center', fontsize='large')
+        fig.text(0,0.5, 'Transit timing residuals [minute]', va='center',
+                 rotation=90, fontsize='large')
         fig.tight_layout(h_pad=0, w_pad=0)
         outpath = savpath.replace('.png','_occ-tra.png')
         fig.savefig(outpath, bbox_inches='tight', dpi=350)
@@ -367,31 +368,31 @@ def quadratic_fit(theta, x, x_occ=None):
 
 def precession_fit(theta, x, x_occ=None):
     """
-    Precession model. Parameters (t0, P_s, e, ω0, dω_by_dE).
+    Precession model. Parameters (t0, P_s, e, omega0, domega_by_dE).
     Must pass transit times.
 
     If x_occ is none, returns model t_tra array.
     If x_occ is a numpy array, returns tuple of model t_tra and t_occ arrays.
     """
-    t0, P_s, e, ω0, dω_by_dΕ = theta
-    P_a = P_s * (1 - dω_by_dΕ/(2*np.pi))**(-1)
+    t0, P_s, e, omega0, domega_by_dΕ = theta
+    P_a = P_s * (1 - domega_by_dΕ/(2*np.pi))**(-1)
 
     if not isinstance(x_occ,np.ndarray):
         return (
             t0 + P_s*x -
             ( (e/np.pi) * P_a *
-              np.cos( ω0 + dω_by_dΕ*x)
+              np.cos( omega0 + domega_by_dΕ*x)
             )
         )
     else:
         return (
             t0 + P_s*x -
             ( (e/np.pi) * P_a *
-              np.cos( ω0 + dω_by_dΕ*x)
+              np.cos( omega0 + domega_by_dΕ*x)
             ),
             t0 + P_a/2 + P_s*x_occ +
             ( (e/np.pi) * P_a *
-              np.cos( ω0 + dω_by_dΕ*x_occ)
+              np.cos( omega0 + domega_by_dΕ*x_occ)
             )
         )
 
@@ -705,8 +706,17 @@ def log_prior(theta, plparams, delta_period = 1e-5*24*60, delta_t0 = 3):
         raise NotImplementedError
 
 
+def _get_domega_by_dE_given_k2(k2p, Mp=1.186*u.Mjup, Mstar=0.864*u.Msun,
+                               a=0.0226*u.AU, Rp=1.321*u.Rjup):
+    # Patra et al (2017) equation 16., which is from Ragozzine & Wolf '09
+    # eqn 14.
+    Mstar_by_Mp = (Mstar/Mp).cgs.value
+    Rplanet_by_a = (Rp/a).cgs.value
+    return k2p * 15*np.pi * Mstar_by_Mp * Rplanet_by_a**5
+
+
 def log_prior_precession(theta, plparams, delta_period = 1e-1*24*60,
-                         delta_t0 = 10*60):
+                         delta_t0 = 10*60, impose_k2p_physical=False):
     """
     args:
         theta (np.ndarray): vector of parameters, in order listed above.
@@ -722,7 +732,7 @@ def log_prior_precession(theta, plparams, delta_period = 1e-1*24*60,
 
     Rstar, Mplanet, Mstar, semimaj, nominal_period, nominal_t0 = plparams
 
-    t0, P_side, e, ω0, dω_by_dΕ = theta
+    t0, P_side, e, omega0, domega_by_dΕ = theta
 
     t0_lower, t0_upper = nominal_t0.value-delta_t0, nominal_t0.value+delta_t0
     P_side_lower, P_side_upper = (
@@ -731,16 +741,24 @@ def log_prior_precession(theta, plparams, delta_period = 1e-1*24*60,
 
     # eccentricty upper set by Husnoo+ 2012: 0.011
     e_lower, e_upper = 1e-8, 0.011
-    ω0_lower, ω0_upper = 0, 2*np.pi
+    omega0_lower, omega0_upper = 0, 2*np.pi
     # dω_by_dΕ_upper here avoids multimodality.
-    dω_by_dΕ_lower, dω_by_dΕ_upper = 1e-6, 3e-3
+    domega_by_dΕ_lower, domega_by_dΕ_upper = 1e-6, 3e-3
+
+    if impose_k2p_physical:
+        # stricter prior, suggested by Darin Ragozzine
+        k2_p_upper = 0.7
+        k2_p_lower = 0.3
+
+        domega_by_dΕ_upper = _get_domega_by_dE_given_k2(k2_p_upper)
+        domega_by_dΕ_lower = _get_domega_by_dE_given_k2(k2_p_lower)
 
     # impose uniform prior.
     if ((P_side_lower < P_side < P_side_upper) and
         (t0_lower < t0 < t0_upper) and
         (e_lower < e < e_upper) and
-        (ω0_lower < ω0 < ω0_upper) and
-        (dω_by_dΕ_lower < dω_by_dΕ < dω_by_dΕ_upper)
+        (omega0_lower < omega0 < omega0_upper) and
+        (domega_by_dΕ_lower < domega_by_dΕ < domega_by_dΕ_upper)
        ):
 
         return 0.
@@ -818,11 +836,13 @@ def log_posterior(theta, data, plparams, data_occ=None):
     return lp + log_likelihood(theta, data, data_occ=data_occ)
 
 
-def log_posterior_precession(theta, data, plparams, data_occ=None):
+def log_posterior_precession(theta, data, plparams, data_occ=None,
+                             impose_k2p_physical=False):
 
     theta = np.asarray(theta)
 
-    lp = log_prior_precession(theta, plparams)
+    lp = log_prior_precession(theta, plparams,
+                              impose_k2p_physical=impose_k2p_physical)
 
     if not np.isfinite(lp):
         return -np.inf
@@ -877,7 +897,7 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
                  log_posterior=log_posterior, sampledir=None, n_walkers=50,
                  burninpercent=0.3, n_mcmc_steps=1000,
                  overwriteexistingsamples=True, nworkers=8, plotcorner=True,
-                 verbose=True, eps=1e-5):
+                 verbose=True, eps=1e-5, plotdir=None):
 
     if degree == 1:
         fitparamnames=['t0 [min]','P [min]']
@@ -944,7 +964,7 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
             backend=backend
         )
         sampler.run_mcmc(starting_positions, n_mcmc_steps,
-                         progress=True)
+                         progress=False)
 
     if verbose:
         LOGINFO(
@@ -1046,7 +1066,8 @@ def compute_mcmc(degree, data, plparams, theta_maxlike, plname, data_occ=None,
         }
 
     if plotcorner:
-        plotdir = os.path.join('../results/model_comparison/',plname)
+        if not plotdir:
+            plotdir = os.path.join('../results/model_comparison/',plname)
         cornersavpath = os.path.join(
             plotdir, 'corner_degree_{:d}_polynomial.png'.format(degree))
 
@@ -1068,7 +1089,8 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
                             data_occ=None, sampledir=None, n_walkers=50,
                             burninpercent=0.3, n_mcmc_steps=1000,
                             overwriteexistingsamples=True, nworkers=8,
-                            plotcorner=True, verbose=True, eps=None):
+                            plotcorner=True, verbose=True, eps=None,
+                            plotdir=None, impose_k2p_physical=False):
 
     fitparamnames=['t0 [min]','P_side [min]','e','omega0','domega_dE']
     n_dim = 5
@@ -1121,12 +1143,12 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
     with Pool(nworkers) as pool:
         sampler = emcee.EnsembleSampler(
             n_walkers, n_dim, log_posterior_precession,
-            args=(data, plparams, data_occ),
+            args=(data, plparams, data_occ, impose_k2p_physical),
             pool=pool,
             backend=backend
         )
         sampler.run_mcmc(starting_positions, n_mcmc_steps,
-                         progress=True)
+                         progress=False)
 
     if verbose:
         LOGINFO(
@@ -1197,7 +1219,8 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
         }
 
     if plotcorner:
-        plotdir = os.path.join('../results/model_comparison/',plname)
+        if not plotdir:
+            plotdir = os.path.join('../results/model_comparison/',plname)
         cornersavpath = os.path.join(plotdir, 'corner_precession_fit.png')
 
         fig = corner.corner(
@@ -1220,7 +1243,8 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
 #################################
 def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
          Rplanet=None, n_steps_prec=10, use_manual_precession=False,
-         sampledir='/home/luke/local/emcee_chains/', run_precession_model=True):
+         sampledir='/home/luke/local/emcee_chains/', run_precession_model=True,
+         transitpath=None, occpath=None, impose_k2p_physical=False):
     '''
     Compare linear, quadratic, and apsidal precession models. If precession
     data is found, at
@@ -1234,16 +1258,20 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         Mstar, Rstar, Mplanet (float): units of Msun, Rsun, Mjup.
     '''
 
-    transitpath = (
-        '../data/{:s}_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
-        .format(plname)
-    )
-    occpath = (
-        '../data/{:s}_occultation_times_selected.csv'
-        .format(plname)
-    )
+    if not transitpath:
+        transitpath = (
+            '../data/{:s}_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
+            .format(plname)
+        )
+    if not occpath:
+        occpath = (
+            '../data/{:s}_occultation_times_selected.csv'
+            .format(plname)
+        )
 
     savdir = '../results/model_comparison/'+plname+'/'
+    if 'REFEREE' in transitpath:
+        savdir = '../results/model_comparison/'+plname+'_OMIT_FOR_REFEREE'+'/'
     if not os.path.exists(savdir):
         os.mkdir(savdir)
 
@@ -1298,12 +1326,12 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         theta_maxlike_precession = None
 
     plot_maxlikelihood_models(x, y, sigma_y, theta_linear, theta_quadratic,
-                              savpath=savdir+'data_maxlikelihood_fits.png',
+                              savpath=os.path.join(savdir,'data_maxlikelihood_fits.png'),
                               xlabel='epoch', ylabel=ylabel)
 
     plot_maxlikelihood_OminusC(x, y, sigma_y, theta_linear, theta_quadratic,
                                theta_maxlike_precession,
-                               savpath=savdir+'data_maxlikelihood_OminusC.png',
+                               savpath=os.path.join(savdir,'data_maxlikelihood_OminusC.png'),
                                xlabel='epoch',
                                ylabel='deviation from constant period [min]',
                                legendstr='max likelihood',
@@ -1330,7 +1358,7 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
 
     p_value = plot_chi2_diff_distribution_comparison(
         data, data_occ=data_occ,
-        savpath=savdir+'chi2_diff_distribution_comparison.png')
+        savpath=os.path.join(savdir,'chi2_diff_distribution_comparison.png'))
 
     print('-----linear vs quad-----')
     print('p_value for ruling out the linear model: {:.3e}'.format(p_value))
@@ -1456,14 +1484,14 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
                           data_occ=data_occ,
                           overwriteexistingsamples=overwrite,
                           sampledir=sampledir, nworkers=16,
-                          n_mcmc_steps=n_steps)
+                          n_mcmc_steps=n_steps, plotdir=savdir)
 
     fit_3d = compute_mcmc(2, data, plparams, theta_quadratic, plname,
                           data_occ=data_occ,
                           overwriteexistingsamples=overwrite,
                           sampledir=sampledir, nworkers=16,
                           n_mcmc_steps=n_steps,
-                          eps=[1e-5, 1e-5, 1e-5])
+                          eps=[1e-5, 1e-5, 1e-5], plotdir=savdir)
 
     if run_precession_model:
         plparams_prec = (
@@ -1476,7 +1504,8 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
             data_occ=data_occ,
             n_mcmc_steps=n_steps_prec, sampledir=sampledir,
             overwriteexistingsamples=overwrite, nworkers=16,
-            verbose=True, eps=[1e-5, 1e-5, 1e-3, 1, 1e-3])
+            verbose=True, eps=[1e-5, 1e-5, 1e-3, 1, 1e-3], plotdir=savdir,
+            impose_k2p_physical=impose_k2p_physical)
     else:
         fit_precession = None
 
@@ -1841,7 +1870,7 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         theta_bestfit_prec = None
     plot_maxlikelihood_OminusC(x, y, sigma_y, theta_bestfit_linear,
                                theta_bestfit_quad, theta_bestfit_prec,
-                               savpath=savdir+'data_bestfit_OminusC.png',
+                               savpath=os.path.join(savdir,'data_bestfit_OminusC.png'),
                                xlabel='epoch',
                                ylabel='deviation from constant period [min]',
                                legendstr='median MCMC',
@@ -1896,8 +1925,8 @@ if __name__ == "__main__":
     plname = 'WASP-4b' #'WASP-4b' 
 
     overwrite = 1 # NOTE change sometimes
-    n_steps = 5000
-    n_steps_prec = 20000
+    n_steps = 1000#5000
+    n_steps_prec = 2000 #20000, 40000
     use_manual_precession = 1
 
     #overwrite = 0 # NOTE change sometimes
@@ -1908,9 +1937,16 @@ if __name__ == "__main__":
     ######################
     # CHANGED LESS OFTEN #
     ######################
+    transitpath = None
+    occpath = None
+    sampledir='/home/luke/local/emcee_chains/'
+
     if plname == 'WASP-4b':
         Mstar, Rstar, Mplanet, Rplanet = 0.864, 0.893, 1.186, 1.321 # USED: my table 1
         run_precession_model = True
+        transitpath = '../data/WASP-4b_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
+        sampledir='/home/luke/local/emcee_chains/'
+        impose_k2p_physical = True # usually false!!
 
     elif plname == 'WASP-18b':
         # Shporer+ 2018 tables. Checked 2019/02/16 from overleaf.
@@ -1931,4 +1967,6 @@ if __name__ == "__main__":
          Rstar=Rstar, Mplanet=Mplanet, Rplanet=Rplanet,
          n_steps_prec=n_steps_prec,
          use_manual_precession=use_manual_precession,
-         run_precession_model=run_precession_model)
+         run_precession_model=run_precession_model,
+         transitpath=transitpath, occpath=occpath,
+         sampledir=sampledir, impose_k2p_physical=impose_k2p_physical)
