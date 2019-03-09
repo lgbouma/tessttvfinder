@@ -1827,8 +1827,8 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         print('implied planet love number k2,p: '
               '{:.3f} +({:.3f}) -({:.3f})'.
              format(k2_p_median,
-                    k2_p_upper,
-                    k2_p_lower))
+                    k2_p_upper - k2_p_median,
+                    k2_p_median - k2_p_lower))
 
         ##########
         print('\nprecession model maxlike parameters\n')
