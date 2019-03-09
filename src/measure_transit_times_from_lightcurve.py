@@ -79,13 +79,11 @@ from astrobase import lcmath
 from astrobase.services.tic import tic_single_object_crossmatch
 from astrobase.varbase.transits import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
-from astrobase.plotbase import plot_phased_mag_series
+from astrobase.plotbase import plot_phased_magseries
 
 from astrobase.varbase.transits import get_transit_times
 
 from numpy.polynomial.legendre import Legendre
-
-np.random.seed(42)
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -629,12 +627,62 @@ def fit_transit_mandelagol_only(transit_ix, t_start, t_end, time,
         print('saved {:s}'.format(maf_savpath))
 
 
+def trapezoidal_spot_model(time, t_spot_mid, T_dur_spot=20/(60*24),
+                           antidepth_spot=0.003):
+    """
+    a trapezoidal spot crossing model: a positive triangle in relative flux vs
+    time.  (centered at t_spot_mid, of duration T_dur_spot, of positive depth
+    antidepth_spot).
+
+    args:
+        time (np.ndarray): times at which to evaluate the model. units are
+        assumed days.
+
+        t_spot_mid (float): should be inside times
+
+        T_dur_spot (float): duration, in days, of spot crossing event. default
+        is 20 minutes.
+
+        antidepth_spot (float): the height of the spot crossing anomaly in
+        relative flux units. default: 0.3%
+    """
+
+    if not isinstance(time, np.ndarray):
+        raise AssertionError('expected time to be np.ndarray')
+
+    spot_flux = np.zeros_like(time)
+
+    t_start = t_spot_mid - T_dur_spot/2
+    t_end = t_spot_mid + T_dur_spot/2
+
+    # before triangle peak
+    prepeak = (time >= t_start) & (time <= t_spot_mid)
+    spot_flux[prepeak] = (
+        antidepth_spot * (time[prepeak] - t_spot_mid) / (T_dur_spot/2)
+        +
+        antidepth_spot
+    )
+
+    # after triangle peak
+    postpeak = (time > t_spot_mid) & (time <= t_end)
+    spot_flux[postpeak] = (
+        - antidepth_spot * (time[postpeak] - t_spot_mid) / (T_dur_spot/2)
+        +
+        antidepth_spot
+    )
+
+    return spot_flux
+
+
+
 def fit_transit_mandelagol_and_line(
     sectornum,
     transit_ix, t_start, t_end, time, flux, err_flux, lcfile, fitd,
     trapfit, litparams, ticid, fit_savdir, chain_savdir, nworkers,
     n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar,
-    getspocparams, timeoffset, fit_ulinear, fit_uquad):
+    getspocparams, timeoffset, fit_ulinear, fit_uquad,
+    inject_spot_crossings=False, tdur=None, seed=42):
+    # tdur: transit duration
 
     lit_period, lit_a_by_rstar, lit_incl = litparams
     bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
@@ -650,6 +698,21 @@ def fit_transit_mandelagol_and_line(
     sel_time = time[sel]
     sel_flux = flux[sel]
     sel_err_flux = err_flux[sel]
+
+    t_spot_mid = None
+    if inject_spot_crossings:
+        if not tdur:
+            raise AssertionError('need tdur for trapezoidal spot model')
+        # inject spot randomly anywhere in [-0.6,0.6] transit durations of the
+        # mid-transit point.
+        randphase = np.random.uniform(-0.6, 0.6)
+        t_spot_mid = np.median(sel_time) + randphase*tdur
+        # T_dur_spot: spot anomaly duration
+        sel_flux += trapezoidal_spot_model(sel_time, t_spot_mid,
+                                           T_dur_spot=30/(60*24),
+                                           antidepth_spot=0.003)
+        print('Transit {}: added spot at phase {}'.
+              format(transit_ix, randphase))
 
     # model = transit + line. "transit" as defined by BATMAN has flux=1 out of
     # transit. so our bounds are for a line that should pass near origin.
@@ -710,9 +773,12 @@ def fit_transit_mandelagol_and_line(
                     n_mcmc_steps=n_mcmc_steps, eps=1e-6, n_walkers=500,
                     skipsampling=False,
                     overwriteexistingsamples=overwriteexistingsamples,
-                    mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset)
+                    mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset,
+                    scatterxdata=t_spot_mid, scatteryaxes=0.05)
 
     fitparamdir = "../results/tess_lightcurve_fit_parameters/"+str(ticid)
+    if inject_spot_crossings:
+        fitparamdir += "_inject_spot_crossings_seed{}".format(seed)
     if not os.path.exists(fitparamdir):
         os.mkdir(fitparamdir)
     fitparamdir = fitparamdir+'/'+'sector_{:d}'.format(sectornum)
@@ -807,7 +873,8 @@ def fit_transit_mandelagol_and_line(
                     n_mcmc_steps=n_mcmc_steps, eps=1e-6, n_walkers=500,
                     skipsampling=False,
                     overwriteexistingsamples=overwriteexistingsamples,
-                    mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset)
+                    mcmcprogressbar=mcmcprogressbar, timeoffset=timeoffset,
+                    scatterxdata=t_spot_mid, scatteryaxes=0.05)
 
     maf_savpath = ( os.path.join(
         fitparamdir,
@@ -897,6 +964,11 @@ def fit_phased_transit_mandelagol_and_line(
                   format(str(ticid),sectornum))
         savpath = ( outdir+ '{:s}_phased_divideOOTline_t{:s}.png'.
                     format(str(ticid),str(ix).zfill(3)))
+
+        if os.path.exists(savpath):
+            print('found & skipped making {}'.format(savpath))
+            ix += 1
+            continue
 
         plt.close('all')
         fig, (a0,a1) = plt.subplots(nrows=2, sharex=True, figsize=(6,6))
@@ -1117,7 +1189,7 @@ def fit_phased_transit_mandelagol_and_line(
         str(ticid)+"_phased_{:s}_fit_empiricalerrs.png".format(fittype)
     ) )
 
-    plot_phased_mag_series(sel_time, sel_flux, lit_period, magsarefluxes=True,
+    plot_phased_magseries(sel_time, sel_flux, lit_period, magsarefluxes=True,
                            errs=None, normto=False, epoch=fitepoch,
                            outfile=outfile, sigclip=False, phasebin=0.01,
                            plotphaselim=[-.4,.4], plotdpi=400,
@@ -1147,7 +1219,11 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
                                           chain_savdir='/home/luke/local/emcee_chains/',
                                           lcdir=None,
                                           n_transit_durations=10,
-                                          verify_times=False):
+                                          verify_times=False,
+                                          inject_spot_crossings=False,
+                                          seed=42):
+
+    np.random.seed(seed)
 
     make_diagnostic_plots = True
     ##########################################
@@ -1175,12 +1251,16 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
             lcfile = lcfiles[0]
 
     fit_savdir = '../results/lc_analysis/'+str(ticid)
+    if inject_spot_crossings:
+        fit_savdir += '_inject_spot_crossings_seed{}'.format(seed)
     if not os.path.exists(fit_savdir):
         os.mkdir(fit_savdir)
     fit_savdir = fit_savdir+'/'+'sector_'+str(sectornum)
     if not os.path.exists(fit_savdir):
         os.mkdir(fit_savdir)
     chain_savdir = chain_savdir+'sector_'+str(sectornum)
+    if inject_spot_crossings:
+        chain_savdir += '_inject_spot_crossings_seed{}'.format(seed)
     if not os.path.exists(chain_savdir):
         os.mkdir(chain_savdir)
     blsfit_plotname = str(ticid)+'_bls_fit.png'
@@ -1225,9 +1305,9 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
 
     bls_period = fitd['period']
     #  plot the BLS model.
-    lcfit._make_fit_plot(fitd['phases'], fitd['phasedmags'], None,
-                         fitd['blsmodel'], fitd['period'], fitd['epoch'],
-                         fitd['epoch'], blsfit_savfile, magsarefluxes=True)
+    lcfit.make_fit_plot(fitd['phases'], fitd['phasedmags'], None,
+                        fitd['blsmodel'], fitd['period'], fitd['epoch'],
+                        fitd['epoch'], blsfit_savfile, magsarefluxes=True)
 
     ingduration_guess = fitd['transitduration']*0.2
     transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
@@ -1239,6 +1319,11 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
                                               transitparams,
                                               magsarefluxes=True, sigclip=None,
                                               plotfit=trapfit_savfile)
+
+    period = trapfit['fitinfo']['finalparams'][0]
+    t0 = trapfit['fitinfo']['fitepoch']
+    transitduration_phase = trapfit['fitinfo']['finalparams'][3]
+    tdur = period * transitduration_phase
 
     # isolate each transit to within +/- n_transit_durations
     tmids, t_starts, t_ends = (
@@ -1302,7 +1387,8 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
                 lcfile, fitd, trapfit, litparams, ticid, fit_savdir,
                 chain_savdir, nworkers, n_mcmc_steps, overwriteexistingsamples,
                 mcmcprogressbar, getspocparams, timeoffset, fit_ulinear,
-                fit_uquad
+                fit_uquad, inject_spot_crossings=inject_spot_crossings,
+                tdur=tdur, seed=seed
             )
 
         except Exception as e:
@@ -1369,10 +1455,20 @@ if __name__ == '__main__':
         action='store_false')
     parser.set_defaults(verifytimes=False)
 
+    parser.add_argument('--injectspots', dest='injectspots',
+        action='store_true', help='whether to inject trapezoidal spot '
+        'crossings into each transit. this was a referee thing.')
+    parser.add_argument('--no-injectspots', dest='injectspots',
+                        action='store_false')
+    parser.set_defaults(injectspots=False)
+
     parser.add_argument('--chain_savdir', type=str, default=None,
         help=('e.g., /home/foo/bar/'))
     parser.add_argument('--lcdir', type=str, default=None,
         help=('e.g., /home/foo/lightcurves/'))
+
+    parser.add_argument('--seed', type=int, default=42,
+        help=('used for random number seeding'))
 
     args = parser.parse_args()
 
@@ -1384,4 +1480,6 @@ if __name__ == '__main__':
         chain_savdir=args.chain_savdir, lcdir=args.lcdir,
         n_transit_durations=args.n_transit_durations,
         read_literature_params=args.rlp,
-        verify_times=args.verifytimes)
+        verify_times=args.verifytimes,
+        inject_spot_crossings=args.injectspots,
+        seed=args.seed)
