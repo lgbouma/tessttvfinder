@@ -18,3 +18,5 @@ results/WASP*
 results/manual_plus_tess*
 results/model_comparison*
 results/verify_tess_timestamps*
+src/measure_wasp*b_times*.sh
+src/measure_sector_2_times_brik.sh
