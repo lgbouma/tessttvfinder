@@ -1242,7 +1242,9 @@ def compute_mcmc_precession(data, plparams, theta_maxlike, plname,
 # main model comparison routine #
 #################################
 def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
-         Rplanet=None, n_steps_prec=10, use_manual_precession=False,
+         Rplanet=None, abyRstar_perr=None, abyRstar_merr=None, a_perr=None,
+         a_merr=None, Rp_perr=None, Rp_merr=None, n_steps_prec=10,
+         use_manual_precession=False,
          sampledir='/home/luke/local/emcee_chains/', run_precession_model=True,
          transitpath=None, occpath=None, impose_k2p_physical=False):
     '''
@@ -1302,9 +1304,14 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     #manual iteration is necessary.
     if run_precession_model:
         if plname=='WASP-4b':
-            init_theta_precession = (
-                np.array([1.15850293e+06, 1927.0530, 2e-3, 2.85, 8e-04])
-            )
+            if impose_k2p_physical:
+                init_theta_precession = (
+                    np.array([1.15850293e+06, 1927.0532, 1e-3, 5., 4e-04])
+                )
+            else:
+                init_theta_precession = (
+                    np.array([1.15850293e+06, 1927.0530, 2e-3, 2.85, 8e-04])
+                )
         elif not os.path.exists(occpath):
             pass
         else:
@@ -1623,17 +1630,29 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
 
     Mp_by_Mstar = (Mplanet/Mstar).cgs.value
     Rstar_by_a = (Rstar/semimaj).cgs.value
+    if isinstance(abyRstar_perr,float) and isinstance(abyRstar_merr,float):
+        abyRstar = 1/Rstar_by_a
+        abyRstar_upper = abyRstar + abyRstar_perr
+        abyRstar_lower = abyRstar - abyRstar_merr
+        Rstar_by_a_upper = 1/abyRstar_lower
+        Rstar_by_a_lower = 1/abyRstar_upper
+    else:
+        Rstar_by_a_upper = Rstar_by_a
+        Rstar_by_a_lower = Rstar_by_a
+
     print('Mp/Mstar = {:.1e}, a/Rstar = {:.3f}'.
           format(Mp_by_Mstar, 1/Rstar_by_a))
+    print('(Rstar/a)_upper = {:.4f}, (Rstar/a)_lower = {:.4f}'.
+          format(Rstar_by_a_upper, Rstar_by_a_lower))
 
     Qstar = (
         - 1/dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
     )
     Qstar_upper = (
-        - 1/dP_dt_upper * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
+        - 1/dP_dt_upper * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a_upper**5
     )
     Qstar_lower = (
-        - 1/dP_dt_lower * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
+        - 1/dP_dt_lower * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a_lower**5
     )
     print('implied Qstar = {:.1e}'.format(Qstar))
     print('implied Qstar_upper = {:.1e}'.format(Qstar_upper))
@@ -1712,9 +1731,9 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         - 1/threesigma_lower_dP_dt * 27*np.pi/2 *  Mp_by_Mstar * Rstar_by_a**5
     )
 
-    print('Qstar > {:.3e} at 1 sigma'.format(onesigma_lower_Qstar))
-    print('Qstar > {:.3e} at 2 sigma'.format(twosigma_lower_Qstar))
-    print('Qstar > {:.3e} at 3 sigma'.format(threesigma_lower_Qstar))
+    print('(median a/Rstar) Qstar > {:.3e} at 1 sigma'.format(onesigma_lower_Qstar))
+    print('(median a/Rstar) Qstar > {:.3e} at 2 sigma'.format(twosigma_lower_Qstar))
+    print('(median a/Rstar) Qstar > {:.3e} at 3 sigma'.format(threesigma_lower_Qstar))
 
 
     ##########
@@ -1782,8 +1801,9 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         print('implying precession period {:.1f} years +({:.1f}) -({:.1f})'.
               format(
                   360/domega_dt_in_deg_per_year,
-                  360/domega_dt_in_deg_per_year_perr,
-                  360/domega_dt_in_deg_per_year_merr)
+                  360/(domega_dt_in_deg_per_year - np.abs(domega_dt_in_deg_per_year_merr)),
+                  360/(domega_dt_in_deg_per_year + domega_dt_in_deg_per_year_perr)
+              )
         )
 
         # implies maximum timing variation away from P/2 of...? Use Eq 33
@@ -1807,10 +1827,29 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
                     max_secondary_variation_upper.to(u.minute),
                     max_secondary_variation_lower.to(u.minute)))
 
-        # implies k2,p equals what? Use Eq 16 of Patra+ 2017.
+        # implies k2,p equals what? Use Eq 16 of Patra+ 2017, which i checked
+        # in 20190309_checking_k2_eqn.pdf :
+        # k2,p = (1/(15*pi))  domega/dE   (Mp/Mstar) (a/Rp)^5
         Rplanet = Rplanet*u.Rjup
         Mp_by_Mstar = (Mplanet/Mstar).cgs.value
         Rplanet_by_a = (Rplanet/semimaj).cgs.value
+
+        if (isinstance(a_perr,float) and isinstance(a_merr,float) and
+            isinstance(Rp_perr,float) and isinstance(Rp_merr,float)
+        ):
+            Rplanet_upper = (Rplanet.value+Rp_perr)*u.Rjup
+            Rplanet_lower = (Rplanet.value-Rp_merr)*u.Rjup
+            a_upper = semimaj + a_perr*u.AU
+            a_lower = semimaj - a_merr*u.AU
+
+            Rplanet_by_a_upper = (Rplanet_upper / a_lower).cgs.value
+            Rplanet_by_a_lower = (Rplanet_lower / a_upper).cgs.value
+
+        else:
+            Rplanet_by_a_upper = Rplanet_by_a
+            Rplanet_by_a_lower = Rplanet_by_a
+        print('(Rp/a)_upper: {:.3f}, (Rp/a)_lower: {:.3f}'.
+              format(Rplanet_by_a_upper, Rplanet_by_a_lower))
 
         k2_p_median = (
             median_domega_dE_prec / (15*np.pi)
@@ -1818,11 +1857,11 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
         )
         k2_p_upper = (
             (median_domega_dE_prec+fiprec['std_perrs']['domega_dE']) / (15*np.pi)
-            * Mp_by_Mstar * Rplanet_by_a**(-5)
+            * Mp_by_Mstar * Rplanet_by_a_lower**(-5)
         )
         k2_p_lower = (
             (median_domega_dE_prec-fiprec['std_merrs']['domega_dE']) / (15*np.pi)
-            * Mp_by_Mstar * Rplanet_by_a**(-5)
+            * Mp_by_Mstar * Rplanet_by_a_upper**(-5)
         )
         print('implied planet love number k2,p: '
               '{:.3f} +({:.3f}) -({:.3f})'.
@@ -1925,9 +1964,9 @@ if __name__ == "__main__":
     plname = 'WASP-4b' #'WASP-4b' 
 
     overwrite = 1 # NOTE change sometimes
-    n_steps = 1000#5000
-    n_steps_prec = 2000 #20000, 40000
-    use_manual_precession = 1
+    n_steps = 5000 #5000
+    n_steps_prec = 40000 # 40000 # 40000
+    use_manual_precession = 1 #NOTE will need to change for the physical k2p prior...
 
     #overwrite = 0 # NOTE change sometimes
     #n_steps = 1
@@ -1940,13 +1979,18 @@ if __name__ == "__main__":
     transitpath = None
     occpath = None
     sampledir='/home/luke/local/emcee_chains/'
+    abyRstar_perr, abyRstar_merr = None, None
+    a_perr, a_merr, Rp_perr, Rp_merr = None, None, None, None
 
     if plname == 'WASP-4b':
         Mstar, Rstar, Mplanet, Rplanet = 0.864, 0.893, 1.186, 1.321 # USED: my table 1
         run_precession_model = True
         transitpath = '../data/WASP-4b_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
         sampledir='/home/luke/local/emcee_chains/'
-        impose_k2p_physical = True # usually false!!
+        impose_k2p_physical = True # NOTE: true to reproduce that one thing...
+        abyRstar_perr, abyRstar_merr = 0.023, 0.052 # table 1.
+        a_perr, a_merr = 0.0007, 0.0008 # AU
+        Rp_perr, Rp_merr = 0.039, 0.039 # RJup
 
     elif plname == 'WASP-18b':
         # Shporer+ 2018 tables. Checked 2019/02/16 from overleaf.
@@ -1965,6 +2009,8 @@ if __name__ == "__main__":
     np.random.seed(42)
     main(plname, n_steps=n_steps, overwrite=overwrite, Mstar=Mstar,
          Rstar=Rstar, Mplanet=Mplanet, Rplanet=Rplanet,
+         abyRstar_perr=abyRstar_perr, abyRstar_merr=abyRstar_merr,
+         a_perr=a_perr, a_merr=a_merr, Rp_perr=Rp_perr, Rp_merr=Rp_merr,
          n_steps_prec=n_steps_prec,
          use_manual_precession=use_manual_precession,
          run_precession_model=run_precession_model,
