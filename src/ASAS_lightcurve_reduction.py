@@ -18,11 +18,11 @@ from astropy.table import Table
 from astropy.coordinates import SkyCoord
 
 from astrobase.periodbase import kbls
-from astrobase.plotbase import plot_phased_mag_series
+from astrobase.plotbase import plot_phased_magseries
 from astrobase import periodbase, checkplot
 from astrobase.lcmath import phase_magseries, sigclip_magseries
 from astrobase.varbase import lcfit
-from astrobase.periodbase import get_snr_of_dip
+from astrobase.varbase.transits import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
 
 from glob import glob
@@ -314,7 +314,7 @@ def plot_old_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     outfile = (
         savdir+'{:s}_phased_on_TEPCAT_params_binned.png'.format(plname)
     )
-    plot_phased_mag_series(stimes, smags, period, magsarefluxes=False,
+    plot_phased_magseries(stimes, smags, period, magsarefluxes=False,
                            errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=pb,
                            plotphaselim=[-.6,.6], plotdpi=400)
@@ -322,7 +322,7 @@ def plot_old_lcs(times, mags, stimes, smags, phasedict, period, epoch, sfluxs,
     outfile = (
         savdir+'{:s}_fluxs_phased_on_TEPCAT_params_binned.png'.format(plname)
     )
-    plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
+    plot_phased_magseries(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=pb,
                            plotphaselim=[-.6,.6], plotdpi=400)
@@ -476,7 +476,7 @@ def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
         savdir+
         'WASP-18b_phased_initialguess_{:s}_fit.png'.format(savstr)
     )
-    plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
+    plot_phased_magseries(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
                            plotphaselim=[-.6,.6], plotdpi=400,
@@ -491,7 +491,7 @@ def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
         savdir+
         'WASP-18b_phased_{:s}_fitfluxs.png'.format(savstr)
     )
-    plot_phased_mag_series(stimes, sfluxs, period, magsarefluxes=True,
+    plot_phased_magseries(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=fitepoch,
                            outfile=outfile, sigclip=False, phasebin=0.02,
                            plotphaselim=[-.6,.6], plotdpi=400,
@@ -570,6 +570,15 @@ def reduce_WASP_18b():
     if make_lc_plots:
         plot_old_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs,
                      'WASP-18b')
+
+    savdf = pd.DataFrame({'time_BJDTDB':stimes, 'sigclipped_mag_bestap':smags,
+                          'err_mag_from_ASAS':serrs})
+    savdfpath = '../results/ASAS_lightcurves/wasp18b_asas_mag_time_err.csv'
+    savdf.to_csv(savdfpath, index=False)
+    print('made {}'.format(savdfpath))
+    #FIXME
+    assert 0
+
 
     ####################################################################
     # fit the lightcurve, show the phased result, get the transit time #
@@ -673,8 +682,8 @@ def reduce_all():
 
 if __name__ == "__main__":
 
-    only_WASP_18b = False
-    do_all = True
+    only_WASP_18b = True
+    do_all = False
 
     if only_WASP_18b:
         reduce_WASP_18b()
