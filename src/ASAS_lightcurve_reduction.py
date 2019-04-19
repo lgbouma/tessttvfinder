@@ -346,7 +346,16 @@ def run_asas_periodograms(times, mags, errs,
 def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
                                     plname, period, epoch,
                                     n_mcmc_steps=100,
-                                    overwriteexistingsamples=False):
+                                    overwriteexistingsamples=False,
+                                    true_b = 0.16,
+                                    true_t0 = None,
+                                    true_rp = np.sqrt(0.01551),
+                                    true_sma = 3.754,
+                                    sma_au = 0.02026*u.au,
+                                    rstar = 1.216*u.Rsun,
+                                    u_linear = 0.4081,
+                                    u_quad = 0.2533
+                                   ):
     '''
     fit for the epoch, fix all other transit parameters.
 
@@ -365,23 +374,23 @@ def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
 
         period, epoch (float, units of days): used to fix the period, and get
         initial epoch guess.
-    '''
 
-    fit_savdir = '../results/ASAS_lightcurves/'
-    chain_savdir = '/home/luke/local/emcee_chains/'
-    savdir='../results/ASAS_lightcurves/'
-
-    true_b, true_sma, true_t0, true_rp = (
-        0.25, None, epoch, np.sqrt(0.00875) )  # nice numbers for initial guess
+    kwargs:
 
     # ClarHa03 Claret & Hauschildt (2003A+A...412..241C), V band, via JKTLD
     # note this ASAS data is V band, so this should be fine, unless the transit
     # is seriously chromatic.
     u_linear, u_quad = 0.5066, 0.1946
 
-    sma_au = 0.02026*u.au
-    rstar = 1.216*u.Rsun
-    true_sma = (sma_au.cgs / rstar.cgs).value
+    from e.g., `jktld 6650 4.245 0 2 q 5 VJ`
+    '''
+
+    fit_savdir = '../results/ASAS_lightcurves/'
+    chain_savdir = '/home/luke/local/emcee_chains/'
+    savdir='../results/ASAS_lightcurves/'
+
+    if not true_sma and sma_au and rstar:
+        true_sma = (sma_au.cgs / rstar.cgs).value
 
     true_incl = None
     if isinstance(true_b,float) and isinstance(true_sma, float):
@@ -474,11 +483,11 @@ def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
 
     outfile = (
         savdir+
-        'WASP-18b_phased_initialguess_{:s}_fit.png'.format(savstr)
+        '{}_phased_initialguess_{:s}_fit.png'.format(plname, savstr)
     )
     plot_phased_magseries(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=epoch,
-                           outfile=outfile, sigclip=False, phasebin=0.02,
+                           outfile=outfile, sigclip=False, phasebin=0.025,
                            plotphaselim=[-.6,.6], plotdpi=400,
                            modelmags=initfluxs, modeltimes=stimes)
 
@@ -489,11 +498,11 @@ def fit_lightcurve_get_transit_time(stimes, sfluxs, serrs, savstr,
 
     outfile = (
         savdir+
-        'WASP-18b_phased_{:s}_fitfluxs.png'.format(savstr)
+        '{}_phased_{:s}_fitfluxs.png'.format(plname, savstr)
     )
     plot_phased_magseries(stimes, sfluxs, period, magsarefluxes=True,
                            errs=None, normto=False, epoch=fitepoch,
-                           outfile=outfile, sigclip=False, phasebin=0.02,
+                           outfile=outfile, sigclip=False, phasebin=0.025,
                            plotphaselim=[-.6,.6], plotdpi=400,
                            modelmags=fitfluxs, modeltimes=stimes)
 
@@ -590,8 +599,8 @@ def reduce_WASP_18b():
     period = 0.94145299
     epoch = 2454221.48163
     empirical_errs = fit_lightcurve_get_transit_time(stimes, sfluxs, serrs,
-                                                     plname, period, epoch,
-                                                     savstr, n_mcmc_steps=10,
+                                                     savstr, plname, period, epoch,
+                                                     n_mcmc_steps=10,
                                                      overwriteexistingsamples=False)
 
     # the ASAS errors are good for fitting an initial model to the data, but
@@ -604,6 +613,100 @@ def reduce_WASP_18b():
     _ = fit_lightcurve_get_transit_time(stimes, sfluxs, eerrs, savstr,
                                         n_mcmc_steps=100,
                                         overwriteexistingsamples=False)
+
+
+def reduce_WASP_121b():
+
+    # options when running
+    try_to_recover_periodograms = False
+    make_lc_plots = True
+
+    plname = 'WASP-121b'
+    # table 1 of Delrez et al 2016 discovery paper. (BJD_TDB)
+    period = 1.2749255
+    epoch = 2456636.345762 + period/2
+    # decimal ra, dec of target used only for BJD conversion
+    ra, dec = 107.60023116745, -39.09727045928
+
+    # file parsing
+    lcdir = '../data/ASAS_lightcurves/'
+    asas_lcs = [f for f in glob(lcdir+'*.txt') if 'WASP-121' in f]
+    lcfile = asas_lcs[0]
+
+    fit_savdir = '../results/ASAS_lightcurves/'
+    chain_savdir = '/home/luke/local/emcee_chains/'
+    savdir='../results/ASAS_lightcurves/'
+
+    #########
+    # begin #
+    #########
+    tempdf, dslices = read_ASAS_lightcurve(lcfile)
+    df = wrangle_ASAS_lightcurve(tempdf, dslices, ra, dec)
+
+    times, mags, errs = (nparr(df['BJD_TDB']), nparr(df['SMAG_bestap']),
+                         nparr(df['SERR_bestap']))
+
+    stimes, smags, serrs = sigclip_magseries(times, mags, errs, sigclip=[5,5],
+                                             magsarefluxes=False)
+
+    phzd = phase_magseries(stimes, smags, period, epoch, wrap=True, sort=True)
+
+    # convert from mags to relative fluxes for fitting
+    # m_x - m_x0 = -5/2 log10( f_x / f_x0 )
+    # so
+    # f_x = f_x0 * 10 ** ( -2/5 (m_x - m_x0) )
+    m_x0, f_x0 = 10, 1e3 # arbitrary
+    sfluxs = f_x0 * 10**( -0.4 * (smags - m_x0) )
+    sfluxs /= np.nanmedian(sfluxs)
+
+    if try_to_recover_periodograms:
+        run_asas_periodograms(stimes, smags, serrs)
+
+    if make_lc_plots:
+        plot_old_lcs(times, mags, stimes, smags, phzd, period, epoch, sfluxs,
+                     'WASP-121b')
+
+    savdf = pd.DataFrame({'time_BJDTDB':stimes, 'sigclipped_mag_bestap':smags,
+                          'err_mag_from_ASAS':serrs})
+    savdfpath = '../results/ASAS_lightcurves/wasp121b_asas_mag_time_err.csv'
+    savdf.to_csv(savdfpath, index=False)
+    print('made {}'.format(savdfpath))
+
+    ####################################################################
+    # fit the lightcurve, show the phased result, get the transit time #
+    ####################################################################
+
+    savstr = 'asas_errs_1d'
+
+    empirical_errs = fit_lightcurve_get_transit_time(stimes, sfluxs, serrs,
+                                                     savstr, plname, period,
+                                                     epoch, n_mcmc_steps=1000,
+                                                     overwriteexistingsamples=True,
+                                                     true_b=0.16,
+                                                     true_t0=epoch,
+                                                     true_rp=np.sqrt(0.01551),
+                                                     true_sma=3.754,
+                                                     sma_au=None,
+                                                     rstar=None,
+                                                     u_linear=0.4081,
+                                                     u_quad=0.2533)
+
+    # the ASAS errors are good for fitting an initial model to the data, but
+    # they may be over/under-estimates. instead use the "empirical errors",
+    # which are the measured 1-sigma standard deviations of the residual.
+
+    savstr = 'empirical_errs_1d'
+    eerrs = np.ones_like(serrs)*empirical_errs
+
+    _ = fit_lightcurve_get_transit_time(stimes, sfluxs, eerrs, savstr, plname,
+                                        period, epoch, n_mcmc_steps=1000,
+                                        overwriteexistingsamples=True,
+                                        true_b=0.16, true_t0=epoch,
+                                        true_rp=np.sqrt(0.01551),
+                                        true_sma=3.754, sma_au=None,
+                                        rstar=None, u_linear=0.4081,
+                                        u_quad=0.2533)
+
 
 
 def reduce_all():
@@ -682,11 +785,15 @@ def reduce_all():
 
 if __name__ == "__main__":
 
-    only_WASP_18b = True
+    only_WASP_18b = False
+    only_WASP_121b = True
     do_all = False
 
     if only_WASP_18b:
         reduce_WASP_18b()
+
+    if only_WASP_121b:
+        reduce_WASP_121b()
 
     if do_all:
         reduce_all()
