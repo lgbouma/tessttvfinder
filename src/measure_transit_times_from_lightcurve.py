@@ -1240,15 +1240,27 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
     # lcname = 'tess2018206045859-s{:s}-{:s}-0121-s_lc.fits.gz'.format(
     #             str(sectornum).zfill(4),str(ticid).zfill(16))
 
-    lcfile = lcdir + lcname
+    lcfile = os.path.join(lcdir, lcname)
     if not os.path.exists(lcfile):
-        lcfiles = glob(lcdir+'*{:s}*'.format(str(ticid)))
-        if len(lcfiles) == 0:
-            raise AssertionError('could not find lightcurve matching ticid')
-        if len(lcfiles) > 1:
-            raise NotImplementedError
-        if len(lcfiles) == 1:
-            lcfile = lcfiles[0]
+
+        # using the TICID, get the ra/dec.
+        from astrobase.services import tic_objectsearch
+
+        ticres = tic_objectsearch(ticid)
+
+        import IPython; IPython.embed()
+        # use this to retrieve from MAST using lightkurve's api.
+
+        from lightkurve.search import search_lightcurvefile
+
+        res = search_lightcurvefile(targetcoordstr, radius=0.1,
+                                    cadence='short', mission='TESS')
+        import IPython; IPython.embed()
+
+
+    assert 0
+    import IPython; IPython.embed()
+    #FIXME
 
     fit_savdir = '../results/lc_analysis/'+str(ticid)
     if inject_spot_crossings:
