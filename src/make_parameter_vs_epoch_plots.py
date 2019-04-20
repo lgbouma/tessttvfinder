@@ -551,7 +551,7 @@ def make_transit_time_df(plname, manualtimecsv=None, tesstimecsv=None,
         tf.rename(index=str,columns={'BJD_TDB':'t0_BJD_TDB',
                                      't0_bigerr':'err_t0'}, inplace=True)
         if isinstance(df, pd.DataFrame):
-            df = pd.concat((df, tf),join='outer')
+            df = pd.concat((df, tf),join='outer',sort=True)
         else:
             df = tf
 
@@ -614,7 +614,9 @@ def make_manually_curated_OminusC_plots(plname, datadir='../data/',
     '''
 
     if manualtimecsv:
-        manual_csv = os.path.join(datadir,manualtimecsv)
+        manual_csv = os.path.join(datadir,
+                                  'manual_literature_time_concatenation',
+                                  manualtimecsv)
     else:
         manual_csv = None
 
@@ -769,23 +771,34 @@ if __name__ == '__main__':
     # req_precision_minutes = 10
     # correcterrorbars = False
 
-    # WASP-18b, no ASAS or Hipparcos point, but with occultations (Avi final).
-    plname = 'WASP-18b'
-    manualtimecsv = '{:s}_manual_no_hipparcos.csv'.format(plname)
-    occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
-    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
-    asastimecsv = None # 'WASP-18b_manual_and_ASAS_times.csv'
-    ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
-    xlim = None
-    req_precision_minutes = 10
-    correcterrorbars = False
+    # # WASP-18b, no ASAS or Hipparcos point, but with occultations (Avi final).
+    # plname = 'WASP-18b'
+    # manualtimecsv = '{:s}_manual_no_hipparcos.csv'.format(plname)
+    # occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimecsv = '100100827_measured_TESS_times_48_transits.csv'
+    # asastimecsv = None # 'WASP-18b_manual_and_ASAS_times.csv'
+    # ylim = [-2,2] # [-0.031,0.011], for WASP-18b with hipparcos times!
+    # xlim = None
+    # req_precision_minutes = 10
+    # correcterrorbars = False
 
     # # WASP-46b
     # plname = 'WASP-46b'
     # manualtimecsv = '{:s}_manual.csv'.format(plname)
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     # tesstimecsv = '231663901_measured_TESS_times_18_transits.csv'
+
+    # WASP-121b
+    plname = 'WASP-121b'
+    manualtimecsv = '{:s}_manual.csv'.format(plname)
+    #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    tesstimecsv = '22529346_measured_TESS_times_18_transits.csv'
+    req_precision_minutes = 30 # get a junky one otherwise!
+    ylim = [-30,30]
+    correcterrorbars = True
+
 
     if make_all_ETD:
         make_all_ETD_plots()
