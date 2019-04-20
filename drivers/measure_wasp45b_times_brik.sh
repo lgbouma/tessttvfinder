@@ -5,6 +5,8 @@
 # (note the extra &'s needed to pipe stdout and stderr)
 ##########################################
 
+cd ../src/
+
 n_sector=2
 lcdir='/home/luke/local/tess_alert_lightcurves/sector-'${n_sector}'/'
 chain_savdir='/home/luke/local/emcee_chains/'
