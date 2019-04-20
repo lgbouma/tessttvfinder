@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 '''
 usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
-                                                [--sectornum SECTORNUM]
                                                 [--n_mcmc_steps N_MCMC_STEPS]
                                                 [--n_phase_mcmc_steps N_PHASE_MCMC_STEPS]
                                                 [--nworkers NWORKERS]
@@ -27,9 +26,6 @@ optional arguments:
   --ticid TICID         integer TIC ID for object. Lightcurve assumed to be at
                         ../data/tess_lightcurves/tess2018206045859-s0001-{tici
                         d}-111-s_llc.fits.gz
-  --sectornum SECTORNUM
-                        string used in sector number (used to glob
-                        lightcurves)
   --n_mcmc_steps N_MCMC_STEPS
                         steps to run in MCMC of individual transits
   --n_phase_mcmc_steps N_PHASE_MCMC_STEPS
@@ -59,8 +55,9 @@ optional arguments:
 '''
 from __future__ import division, print_function
 
-import os, argparse, pickle, h5py
+import os, argparse, pickle, h5py, json
 from glob import glob
+from parse import search
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -84,6 +81,9 @@ from astrobase.plotbase import plot_phased_magseries
 from astrobase.varbase.transits import get_transit_times
 
 from numpy.polynomial.legendre import Legendre
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -1071,6 +1071,7 @@ def fit_phased_transit_mandelagol_and_line(
     print('beginning {:s}'.format(samplesavpath))
 
     plt.close('all')
+
     maf_data_errs = lcfit.mandelagol_fit_magseries(
                     sel_time, sel_flux, sel_err_flux,
                     initfitparams, priorbounds, fixedparams,
@@ -1208,7 +1209,7 @@ def fit_phased_transit_mandelagol_and_line(
     return fit_abyrstar, fit_incl, fit_ulinear, fit_uquad
 
 
-def measure_transit_times_from_lightcurve(ticid, sectornum,
+def measure_transit_times_from_lightcurve(ticid,
                                           n_mcmc_steps,
                                           n_phase_mcmc_steps,
                                           getspocparams=False,
@@ -1228,39 +1229,53 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
     make_diagnostic_plots = True
     ##########################################
 
-    # paths for reading and writing plots
-    lcname = ('hlsp_tess-data-alerts_tess_phot_{:s}-s{:s}_tess_v1_lc.fits'.
-              format(str(ticid).zfill(11), str(sectornum).zfill(2))
-             )
-
     if not lcdir:
         raise AssertionError('input directory to find lightcurves')
+    if not os.path.exists(lcdir):
+        os.mkdir(lcdir)
 
-    #NOTE: old. final 0121 string tied to sector number.
-    # lcname = 'tess2018206045859-s{:s}-{:s}-0121-s_lc.fits.gz'.format(
-    #             str(sectornum).zfill(4),str(ticid).zfill(16))
+    #
+    # query MAST, via astrobase and lightkurve APIs, to first get ra/dec
+    # given TICID, then to get lightcurve given ra/dec.
+    #
 
-    lcfile = os.path.join(lcdir, lcname)
-    if not os.path.exists(lcfile):
+    from astrobase.services.mast import tic_objectsearch
+    from lightkurve.search import search_lightcurvefile
 
-        # using the TICID, get the ra/dec.
-        from astrobase.services import tic_objectsearch
+    ticres = tic_objectsearch(ticid)
 
-        ticres = tic_objectsearch(ticid)
+    with open(ticres['cachefname'], 'r') as json_file:
+        data = json.load(json_file)
 
-        import IPython; IPython.embed()
-        # use this to retrieve from MAST using lightkurve's api.
+    ra = data['data'][0]['ra']
+    dec = data['data'][0]['dec']
 
-        from lightkurve.search import search_lightcurvefile
+    targetcoordstr = '{} {}'.format(ra, dec)
 
-        res = search_lightcurvefile(targetcoordstr, radius=0.1,
-                                    cadence='short', mission='TESS')
-        import IPython; IPython.embed()
+    res = search_lightcurvefile(targetcoordstr, radius=0.1,
+                                cadence='short', mission='TESS')
 
+    if len(res.table)!=1:
+        raise AssertionError('expected single sector of SC data. need '
+                             'smarter logic')
 
-    assert 0
-    import IPython; IPython.embed()
-    #FIXME
+    # parse sector number from the obs_id, in format:
+    # tess2019006130736-s0007-0000000022529346-0131-s
+    sectornum = int(
+        search('tess{}-s{}-{}', res.table['obs_id'][0])[1].lstrip('0')
+    )
+
+    download_dir = lcdir
+
+    res.download_all(download_dir=download_dir)
+
+    lcfiles = glob(os.path.join(lcdir, 'mastDownload', 'TESS', 'tess*',
+                                'tess*_lc.fits'))
+    if len(lcfiles) != 1:
+        raise AssertionError('expected single sector of SC data. need '
+                             'smarter logic')
+
+    lcfile = lcfiles[0]
 
     fit_savdir = '../results/lc_analysis/'+str(ticid)
     if inject_spot_crossings:
@@ -1317,9 +1332,10 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
 
     bls_period = fitd['period']
     #  plot the BLS model.
-    lcfit.make_fit_plot(fitd['phases'], fitd['phasedmags'], None,
-                        fitd['blsmodel'], fitd['period'], fitd['epoch'],
-                        fitd['epoch'], blsfit_savfile, magsarefluxes=True)
+    from astrobase.lcfit.utils import make_fit_plot
+    make_fit_plot(fitd['phases'], fitd['phasedmags'], None, fitd['blsmodel'],
+                  fitd['period'], fitd['epoch'], fitd['epoch'], blsfit_savfile,
+                  magsarefluxes=True)
 
     ingduration_guess = fitd['transitduration']*0.2
     transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
@@ -1345,11 +1361,42 @@ def measure_transit_times_from_lightcurve(ticid, sectornum,
     rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
 
     if read_literature_params:
-        # get the fixed physical parameters from the data
-        litpath = (
-            '../data/literature_physicalparams/{:d}/params.csv'.format(ticid)
+
+        litdir = "../data/literature_physicalparams/{:d}/".format(ticid)
+        if not os.path.exists(litdir):
+            os.mkdir(litdir)
+
+        # attempt to get physical parameters of planet -- period, a/Rstar, and
+        # inclination -- for the initial guesses.
+        from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
+        eatab = NasaExoplanetArchive.get_confirmed_planets_table()
+
+        pl_coords = eatab['sky_coord']
+        tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
+
+        print('got match w/ separation {}'.format(
+            np.min(tcoord.separation(pl_coords).to(u.arcsec))))
+        pl_row = eatab[np.argmin(tcoord.separation(pl_coords).to(u.arcsec))]
+
+        # all dimensionful
+        period = pl_row['pl_orbper'].value
+        incl = pl_row['pl_orbincl'].value
+        semimaj_au = pl_row['pl_orbsmax']
+        rstar = pl_row['st_rad']
+        a_by_rstar = (semimaj_au / rstar).cgs.value
+
+        litdf = pd.DataFrame(
+            {'period_day':period,
+             'a_by_rstar':a_by_rstar,
+             'inclination_deg':incl
+            }, index=[0]
         )
-        litdf = pd.read_csv(litpath)
+        # get the fixed physical parameters from the data. period_day,
+        # a_by_rstar, and inclination_deg are comma-separated in this file.
+        litpath = os.path.join(litdir, 'params.csv')
+        litdf.to_csv(litpath, index=False, header=True, sep=',')
+        litdf = pd.read_csv(litpath, sep=',')
+
         # NOTE: only period is used, for now
         litparams = tuple(map(float,
             [litdf['period_day'],litdf['a_by_rstar'],litdf['inclination_deg']])
@@ -1485,7 +1532,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     measure_transit_times_from_lightcurve(
-        args.ticid, args.sectornum, args.n_mcmc_steps,
+        args.ticid, args.n_mcmc_steps,
         args.n_phase_mcmc_steps, getspocparams=args.spocparams,
         overwriteexistingsamples=args.overwrite,
         mcmcprogressbar=args.progressbar, nworkers=args.nworkers,
