@@ -1365,37 +1365,40 @@ def measure_transit_times_from_lightcurve(ticid,
         litdir = "../data/literature_physicalparams/{:d}/".format(ticid)
         if not os.path.exists(litdir):
             os.mkdir(litdir)
-
-        # attempt to get physical parameters of planet -- period, a/Rstar, and
-        # inclination -- for the initial guesses.
-        from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
-        eatab = NasaExoplanetArchive.get_confirmed_planets_table()
-
-        pl_coords = eatab['sky_coord']
-        tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
-
-        print('got match w/ separation {}'.format(
-            np.min(tcoord.separation(pl_coords).to(u.arcsec))))
-        pl_row = eatab[np.argmin(tcoord.separation(pl_coords).to(u.arcsec))]
-
-        # all dimensionful
-        period = pl_row['pl_orbper'].value
-        incl = pl_row['pl_orbincl'].value
-        semimaj_au = pl_row['pl_orbsmax']
-        rstar = pl_row['st_rad']
-        a_by_rstar = (semimaj_au / rstar).cgs.value
-
-        litdf = pd.DataFrame(
-            {'period_day':period,
-             'a_by_rstar':a_by_rstar,
-             'inclination_deg':incl
-            }, index=[0]
-        )
-        # get the fixed physical parameters from the data. period_day,
-        # a_by_rstar, and inclination_deg are comma-separated in this file.
         litpath = os.path.join(litdir, 'params.csv')
-        litdf.to_csv(litpath, index=False, header=True, sep=',')
-        litdf = pd.read_csv(litpath, sep=',')
+
+        if not os.path.exists(litpath):
+            # attempt to get physical parameters of planet -- period, a/Rstar, and
+            # inclination -- for the initial guesses.
+            from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
+            eatab = NasaExoplanetArchive.get_confirmed_planets_table()
+
+            pl_coords = eatab['sky_coord']
+            tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
+
+            print('got match w/ separation {}'.format(
+                np.min(tcoord.separation(pl_coords).to(u.arcsec))))
+            pl_row = eatab[np.argmin(tcoord.separation(pl_coords).to(u.arcsec))]
+
+            # all dimensionful
+            period = pl_row['pl_orbper'].value
+            incl = pl_row['pl_orbincl'].value
+            semimaj_au = pl_row['pl_orbsmax']
+            rstar = pl_row['st_rad']
+            a_by_rstar = (semimaj_au / rstar).cgs.value
+
+            litdf = pd.DataFrame(
+                {'period_day':period,
+                 'a_by_rstar':a_by_rstar,
+                 'inclination_deg':incl
+                }, index=[0]
+            )
+            # get the fixed physical parameters from the data. period_day,
+            # a_by_rstar, and inclination_deg are comma-separated in this file.
+            litdf.to_csv(litpath, index=False, header=True, sep=',')
+            litdf = pd.read_csv(litpath, sep=',')
+        else:
+            litdf = pd.read_csv(litpath, sep=',')
 
         # NOTE: only period is used, for now
         litparams = tuple(map(float,
