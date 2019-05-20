@@ -299,8 +299,13 @@ def scatter_plot_parameter_vs_epoch_manual(
                    'original_reference',
                    'where_I_got_time']]
 
-    savdfpath = (os.path.join( '../data/', os.path.basename(
-        savname.replace('.png', '_selected.csv'))))
+    savdfpath = (
+        os.path.join(
+            '../data/',
+            'literature_plus_TESS_times',
+            os.path.basename(savname.replace('.png', '_selected.csv'))
+        )
+    )
     savdf.to_csv(savdfpath, sep=';', index=False)
     print('saved {:s}'.format(savdfpath))
 
@@ -327,7 +332,11 @@ def scatter_plot_parameter_vs_epoch_manual(
                                'original_reference',
                                'where_I_got_time']]
 
-        occ_savdfpath = '../data/{:s}_occultation_times_selected.csv'.format(plname)
+        occ_savdfpath = (
+            '../data/'+
+            'literature_plus_TESS_times/'+
+            '{:s}_occultation_times_selected.csv'.format(plname)
+        )
         occ_savdf.to_csv(occ_savdfpath, sep=';', index=False)
         print('saved {:s}'.format(occ_savdfpath))
 
@@ -621,7 +630,7 @@ def make_manually_curated_OminusC_plots(plname, datadir='../data/',
         manual_csv = None
 
     if tesstimecsv:
-        tesstimecsv = os.path.join(datadir,tesstimecsv)
+        tesstimecsv = os.path.join(datadir,'measured_TESS_times',tesstimecsv)
     else:
         tesstimecsv = None
 
@@ -789,14 +798,34 @@ if __name__ == '__main__':
     # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     # tesstimecsv = '231663901_measured_TESS_times_18_transits.csv'
 
-    # WASP-121b
-    plname = 'WASP-121b'
+    # # WASP-121b
+    # plname = 'WASP-121b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimecsv = '22529346_measured_TESS_times_18_transits.csv'
+    # req_precision_minutes = 30 # get a junky one otherwise!
+    # ylim = [-30,30]
+    # correcterrorbars = True
+
+    # # WASP-19b
+    # plname = 'WASP-19b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimecsv = '35516889_measured_TESS_times_29_transits.csv'
+    # req_precision_minutes = 30 # get a junky one otherwise!
+    # ylim = [-3,3]
+    # correcterrorbars = True
+
+    # COROT-1b
+    plname = 'CoRoT-1b'
     manualtimecsv = '{:s}_manual.csv'.format(plname)
     #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
     savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    tesstimecsv = '22529346_measured_TESS_times_18_transits.csv'
+    tesstimecsv = '36352297_measured_TESS_times_14_transits.csv'
     req_precision_minutes = 30 # get a junky one otherwise!
-    ylim = [-30,30]
+    ylim = [-5,5]
     correcterrorbars = True
 
 

@@ -33,6 +33,11 @@ midtime error bars so that chi_red^2 = 1.  You must look at the
 "WASP-18b_tess_errorbar_check.png" to check whether this seems worth the method
 hockiness (usally if chi^2 red is near 1 without it, there should be no need).
 
+If you want the full band plot,
+
+$ python plot_O_minus_C_with_err_band.py
+
+----------
 
 then, at `WASP-4b/src/compute_planet_star_parameters.py`
 

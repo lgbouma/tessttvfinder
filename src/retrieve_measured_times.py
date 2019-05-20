@@ -80,7 +80,7 @@ def retrieve_measured_times_pickle(
         't0_bigerr':t0_bigerr, 'BJD_TDB':t0+2457000, 'samplepath':samplepaths,
         'picklepath':picklepaths
     })
-    outdir = '../data/'
+    outdir = '../data/measured_TESS_times/'
     outname = (
         str(ticid)+'_measured_TESS_times_{:d}_transits.csv'.format(transit_ix)
     )
