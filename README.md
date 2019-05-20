@@ -18,3 +18,9 @@ relevant resources
 * [corner](https://corner.readthedocs.io/en/latest/api.html)
 * Eastman et al. (2010) for HJD to BJD conversion.
 * [VanderPlas's introduction to model comparison](http://nbviewer.jupyter.org/url/jakevdp.github.io/downloads/notebooks/FreqBayes5.ipynb)
+
+relevant reading
+----------
+* This pipeline lead to a
+  [detailed study on WASP-4](https://ui.adsabs.harvard.edu/abs/2019AJ....157..217B/abstract).
+  That repo is [here](https://github.com/lgbouma/WASP-4b_anomaly).
