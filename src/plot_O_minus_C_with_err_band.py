@@ -390,12 +390,16 @@ if __name__=="__main__":
                'WASP-46b',
                'WASP-19b',
                'WASP-121b',
-               'CoRoT-1b'
+               'CoRoT-1b',
+               'WASP-31b'
               ]
 
     for plname in plnames:
 
         outpath = '../results/O_minus_C_with_err_band/{}.png'.format(plname)
+
+        if os.path.exists(outpath):
+            continue
 
         period_guess = _get_period_guess_given_plname(plname)
 
