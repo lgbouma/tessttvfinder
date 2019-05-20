@@ -38,6 +38,22 @@ python -u measure_transit_times_from_lightcurve.py \
   --no-verify-times \
   --n_transit_durations $n_transit_durations
 
+exit 1
+
+# ticid=35516889 # WASP-19b
+# lcdir='/home/luke/local/tess_mast_lightcurves/tic_'${ticid}'/'
+# python -u measure_transit_times_from_lightcurve.py \
+#   --ticid $ticid --n_mcmc_steps $n_mcmc \
+#   --n_phase_mcmc_steps $n_phase_mcmc \
+#   --no-getspocparams --read_literature_params \
+#   --overwritesamples --no-mcmcprogressbar \
+#   --nworkers $n_workers --chain_savdir $chain_savdir --lcdir $lcdir \
+#   --no-verify-times \
+#   --n_transit_durations $n_transit_durations
+# 
+
+exit 1
+
 ticid=17746821 # HAT-P-50b
 lcdir='/home/luke/local/tess_mast_lightcurves/tic_'${ticid}'/'
 python -u measure_transit_times_from_lightcurve.py \
