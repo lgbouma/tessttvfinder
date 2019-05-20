@@ -21,3 +21,4 @@ results/verify_tess_timestamps*
 src/measure_wasp*b_times*.sh
 src/measure_sector_2_times_brik.sh
 results/ASAS_lightcurves/*csv
+results/O_minus_C*
