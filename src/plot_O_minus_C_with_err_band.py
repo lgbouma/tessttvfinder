@@ -397,19 +397,11 @@ if __name__=="__main__":
 
         outpath = '../results/O_minus_C_with_err_band/{}.png'.format(plname)
 
-        #if os.path.exists(outpath):
-        #    print('found & skip {}'.format(outpath))
-        #    continue
-
         period_guess = _get_period_guess_given_plname(plname)
 
-        ## with selected points used in fit
         xlim = None
         ylim = None
         ylim1 = None
-        #xlim = [-600,2600]
-        #ylim = [-2.5,1.5]
-        #ylim1 = [-2.5,1.5] # for bottom subplot
 
         plot_O_minus_C_with_err_band(plname, period_guess, xlim=xlim,
                                      ylim=ylim, savpath=outpath, ylim1=ylim1)
