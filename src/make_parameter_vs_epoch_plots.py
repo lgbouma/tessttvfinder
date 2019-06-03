@@ -808,15 +808,15 @@ if __name__ == '__main__':
     # ylim = [-30,30]
     # correcterrorbars = True
 
-    # # WASP-19b
-    # plname = 'WASP-19b'
-    # manualtimecsv = '{:s}_manual.csv'.format(plname)
-    # #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
-    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    # tesstimecsv = '35516889_measured_TESS_times_29_transits.csv'
-    # req_precision_minutes = 30 # get a junky one otherwise!
-    # ylim = [-3,3]
-    # correcterrorbars = True
+    # WASP-19b
+    plname = 'WASP-19b'
+    manualtimecsv = '{:s}_manual.csv'.format(plname)
+    #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    tesstimecsv = '35516889_measured_TESS_times_29_transits.csv'
+    req_precision_minutes = 30 # get a junky one otherwise!
+    ylim = [-3,3]
+    correcterrorbars = True
 
     # # COROT-1b
     # plname = 'CoRoT-1b'
@@ -828,15 +828,15 @@ if __name__ == '__main__':
     # ylim = [-5,5]
     # correcterrorbars = True
 
-    # WASP-31b
-    plname = 'WASP-31b'
-    manualtimecsv = '{:s}_manual.csv'.format(plname)
-    #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
-    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
-    tesstimecsv = '437248515_measured_TESS_times_7_transits.csv'
-    req_precision_minutes = 30 # get a junky one otherwise!
-    ylim = [-30,30]
-    correcterrorbars = True
+    # # WASP-31b
+    # plname = 'WASP-31b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
+    # tesstimecsv = '437248515_measured_TESS_times_7_transits.csv'
+    # req_precision_minutes = 30 # get a junky one otherwise!
+    # ylim = [-30,30]
+    # correcterrorbars = True
 
     if make_all_ETD:
         make_all_ETD_plots()
