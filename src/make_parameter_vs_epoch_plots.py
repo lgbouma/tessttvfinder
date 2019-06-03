@@ -815,7 +815,7 @@ if __name__ == '__main__':
     savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     tesstimecsv = '35516889_measured_TESS_times_29_transits.csv'
     req_precision_minutes = 30 # get a junky one otherwise!
-    ylim = [-3,3]
+    ylim = [-4,4]
     correcterrorbars = True
 
     # # COROT-1b
