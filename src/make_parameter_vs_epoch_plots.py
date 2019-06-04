@@ -149,7 +149,8 @@ def scatter_plot_parameter_vs_epoch_manual(
     # in model comparison. (don't use them for determining least squares t0 or
     # period, because they are usually rattier).
     if isinstance(occultationtimecsv, str):
-        occ_file = os.path.join('../data/',occultationtimecsv)
+        occ_file = os.path.join('../data/manual_literature_time_concatenation',
+                                occultationtimecsv)
     else:
         occ_file = None
     if occ_file:
@@ -169,6 +170,9 @@ def scatter_plot_parameter_vs_epoch_manual(
 
             if plname=='WASP-4b':
                 semimaj = 0.0228*u.au # Petrucci+ 2013, table 3
+                ltt_corr = (2*semimaj/constants.c).to(u.second)
+            elif plname=='WASP-19b':
+                semimaj = 0.01634*u.au # TEPCAT
                 ltt_corr = (2*semimaj/constants.c).to(u.second)
             else:
                 raise NotImplementedError('need to implement ltt correction')
@@ -811,7 +815,7 @@ if __name__ == '__main__':
     # WASP-19b
     plname = 'WASP-19b'
     manualtimecsv = '{:s}_manual.csv'.format(plname)
-    #occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
+    occultationtimecsv = '{:s}_manual_occultations.csv'.format(plname)
     savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch.png'.format(plname)
     tesstimecsv = '35516889_measured_TESS_times_29_transits.csv'
     req_precision_minutes = 30 # get a junky one otherwise!

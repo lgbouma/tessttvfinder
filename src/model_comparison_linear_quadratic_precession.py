@@ -290,6 +290,7 @@ def plot_maxlikelihood_OminusC(
                quadratic_fit(theta_quadratic, xfit, x_occ=xfit_occ)[1]
                    - linear_fit(theta_linear, xfit, x_occ=xfit_occ)[1],
                label='{:s} quadratic fit'.format(legendstr), zorder=-1)
+
         if isinstance(theta_precession, np.ndarray):
             a1.plot(xfit_occ,
                     precession_fit(theta_precession, xfit, x_occ=xfit_occ)[1]
@@ -1262,12 +1263,12 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
 
     if not transitpath:
         transitpath = (
-            '../data/{:s}_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
+            '../data/literature_plus_TESS_times/{:s}_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
             .format(plname)
         )
     if not occpath:
         occpath = (
-            '../data/{:s}_occultation_times_selected.csv'
+            '../data/literature_plus_TESS_times/{:s}_occultation_times_selected.csv'
             .format(plname)
         )
 
@@ -1386,7 +1387,7 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     # model fitting. What are the best-fitting model parameters for each model?
     # To answer, you must set priors. To set priors, you need to get planet
     # parameters. Get them from TEPCAT.
-    tepcatpath = '../data/TEPCAT_allplanets.csv'
+    tepcatpath = '../data/TEPCAT/TEPCAT_allplanets.csv'
     tepcat_df = pd.read_csv(tepcatpath, delimiter= ' *, *', engine='python')
     base_plname = plname.rstrip('b').split('-')[0]
     if base_plname == 'WASP':
@@ -1961,17 +1962,12 @@ if __name__ == "__main__":
     ######################
     # CHANGED MOST OFTEN #
     ######################
-    plname = 'WASP-4b' #'WASP-4b' 
+    plname = 'WASP-19b'
 
     overwrite = 1 # NOTE change sometimes
     n_steps = 5000 #5000
-    n_steps_prec = 40000 # 40000 # 40000
-    use_manual_precession = 1 #NOTE will need to change for the physical k2p prior...
-
-    #overwrite = 0 # NOTE change sometimes
-    #n_steps = 1
-    #n_steps_prec = 1
-    #use_manual_precession = 1
+    n_steps_prec = 10 # 40000
+    use_manual_precession = 1
 
     ######################
     # CHANGED LESS OFTEN #
@@ -1987,7 +1983,7 @@ if __name__ == "__main__":
         run_precession_model = True
         transitpath = '../data/WASP-4b_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
         sampledir='/home/luke/local/emcee_chains/'
-        impose_k2p_physical = True # NOTE: true to reproduce that one thing...
+        impose_k2p_physical = True # used to impose physical love number prior
         abyRstar_perr, abyRstar_merr = 0.023, 0.052 # table 1.
         a_perr, a_merr = 0.0007, 0.0008 # AU
         Rp_perr, Rp_merr = 0.039, 0.039 # RJup
@@ -2002,6 +1998,16 @@ if __name__ == "__main__":
         Mp = get_plmass_given_K(a, Mstar, sini, K, e=0.0091)
         Mstar, Rstar, Rplanet, Mplanet = 1.46, 1.26, 1.191, Mp.value
         run_precession_model = False
+
+    elif plname == 'WASP-19b':
+        # from TEPCAT
+        # http://www.astro.keele.ac.uk/jkt/tepcat/allplanets-noerr.html
+        Mstar, Rstar, Rplanet = 0.935, 1.018, 1.410
+        Mplanet = 1.139
+        a = 0.01634*u.au
+        run_precession_model = False
+        impose_k2p_physical = False
+
 
     #################
     # CHANGED LEAST #
