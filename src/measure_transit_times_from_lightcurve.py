@@ -73,7 +73,7 @@ from astrobase import astrotess as at
 from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
-from astrobase.services.tic import tic_single_object_crossmatch
+from astrobase.services.mast import tic_single_object_crossmatch
 from astrobase.varbase.transits import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
 from astrobase.plotbase import plot_phased_magseries
@@ -246,7 +246,7 @@ def get_timeseries_and_median_filter(lcfile, mingap=240/(60*24)):
 
     if lcfile.endswith('.fits.gz'):
         time, flux, err_flux = (
-            at.get_time_flux_errs_from_Ames_lightcurve(lcfile, 'PDCSAP')
+            at.read_tess_fitslc(lcfile, 'PDCSAP')
         )
     else:
         raise NotImplementedError
