@@ -292,6 +292,9 @@ def plot_O_minus_C_with_err_band(plname, period_guess, xlim=None, ylim=None,
         a0.set_ylim(ylim)
     if ylim1:
         a1.set_ylim(ylim1)
+    else:
+        a0ylim = a0.get_ylim()
+        a1.set_ylim(a0ylim)
     a1.set_xlim((np.floor(bin_tess_x-1.1*len(tess_epoch)/2),
                  np.ceil(bin_tess_x+1.1*len(tess_epoch)/2)))
 
