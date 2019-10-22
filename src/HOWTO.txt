@@ -1,4 +1,4 @@
-first, run something like:
+first, run something (from /drivers/) like:
 
 $ ./measure_wasp4b_times_brik.sh &> ../logs/4b.log &
 

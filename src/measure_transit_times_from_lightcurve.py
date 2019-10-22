@@ -73,7 +73,7 @@ from astrobase import astrotess as at
 from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
-from astrobase.services.mast import tic_single_object_crossmatch
+from astrobase.services.mast import tic_xmatch
 from astrobase.varbase.transits import get_snr_of_dip
 from astrobase.varbase.transits import estimate_achievable_tmid_precision
 from astrobase.plotbase import plot_phased_magseries
@@ -98,7 +98,7 @@ def get_a_over_Rstar_guess(lcfile, period):
     lc = hdulist[1].data
     ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
     sep = 1*u.arcsec
-    obj = tic_single_object_crossmatch(ra,dec,sep.to(u.deg).value)
+    obj = tic_xmatch(ra, dec, radius_arcsec=sep.to(u.arcsec).value)
     if len(obj['data'])==1:
         rad = obj['data'][0]['rad']
         mass = obj['data'][0]['mass']
@@ -143,7 +143,7 @@ def get_limb_darkening_initial_guesses(lcfile):
     ### OLD IMPLEMENTATION THAT MIGHT STRUGGLE B/C OF MULTIPLE OBJECTS:
     ### ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
     ### sep = 0.1*u.arcsec
-    ### obj = tic_single_object_crossmatch(ra,dec,sep.to(u.deg).value)
+    ### obj = tic_xmatch(ra, dec, radius_arcsec=sep.to(u.arcsec).value)
     ### if len(obj['data'])==1:
     ###     teff = obj['data'][0]['Teff']
     ###     logg = obj['data'][0]['logg']
@@ -1256,8 +1256,11 @@ def measure_transit_times_from_lightcurve(ticid,
                                 cadence='short', mission='TESS')
 
     if len(res.table)!=1:
-        raise AssertionError('expected single sector of SC data. need '
-                             'smarter logic')
+        errmsg = (
+            'expected single sector of SC data. got {}. need smarter logic'.
+            format(len(res.table))
+        )
+        raise AssertionError(errmsg)
 
     # parse sector number from the obs_id, in format:
     # tess2019006130736-s0007-0000000022529346-0131-s
