@@ -28,6 +28,7 @@ from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
 from astrobase.services.mast import tic_xmatch
+from astrobase.services.limbdarkening import get_tess_limb_darkening_guesses
 from astrobase.varbase.transits import (
     get_snr_of_dip, estimate_achievable_tmid_precision, get_transit_times
 )
@@ -91,41 +92,13 @@ def get_limb_darkening_initial_guesses(lcfile):
     teff = main_hdr['TEFF']
     logg = main_hdr['LOGG']
     metallicity = main_hdr['MH']
+
     if not isinstance(metallicity,float):
         metallicity = 0 # solar
+    if not isinstance(logg, float):
+        raise AssertionError('did not get float logg')
 
-    # get the Claret quadratic priors for TESS bandpass
-    # the selected table below is good from Teff = 1500 - 12000K, logg = 2.5 to
-    # 6. We choose values computed with the "r method", see
-    # http://vizier.u-strasbg.fr/viz-bin/VizieR-n?-source=METAnot&catid=36000030&notid=1&-out=text
-    assert 2300 < teff < 12000
-    assert 2.5 < logg < 6
-
-    from astroquery.vizier import Vizier
-    Vizier.ROW_LIMIT = -1
-    catalog_list = Vizier.find_catalogs('J/A+A/600/A30')
-    catalogs = Vizier.get_catalogs(catalog_list.keys())
-    t = catalogs[1]
-    sel = (t['Type'] == 'r')
-    df = t[sel].to_pandas()
-
-    # since we're using these as starting guesses, not even worth
-    # interpolating. just use the closest match!
-    # each Teff gets 8 logg values. first, find the best teff match.
-    foo = df.iloc[(df['Teff']-teff).abs().argsort()[:8]]
-    # then, among those best 8, get the best logg match.
-    bar = foo.iloc[(foo['logg']-logg).abs().argsort()].iloc[0]
-
-    # TODO: should probably determine these coefficients by INTERPOLATING.
-    # (especially in cases when you're FIXING them, rather than letting them
-    # float).
-    print('WRN! skipping interpolation for Claret coefficients.')
-    print('WRN! data logg={:.3f}, teff={:.1f}'.format(logg, teff))
-    print('WRN! Claret logg={:.3f}, teff={:.1f}'.
-          format(bar['logg'],bar['Teff']))
-
-    u_linear = bar['aLSM']
-    u_quad = bar['bLSM']
+    u_linear, u_quad = get_tess_limb_darkening_guesses(teff, logg)
 
     return float(u_linear), float(u_quad)
 
@@ -1247,9 +1220,11 @@ def measure_transit_times_from_lightcurve(
         return 1
 
     # run bls to get initial parameters.
-    endp = 1.05*(np.nanmax(time) - np.nanmin(time))/2
+    startp = float(litdf.period_day) - 0.5
+    endp = float(litdf.period_day) + 0.5
+
     blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
-                                      startp=0.1, endp=endp,
+                                      startp=startp, endp=endp,
                                       maxtransitduration=0.3, nworkers=8,
                                       sigclip=None)
     fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
