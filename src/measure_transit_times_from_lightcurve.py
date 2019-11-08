@@ -65,8 +65,12 @@ from matplotlib import rc
 rc('text', usetex=False)
 
 import numpy as np, matplotlib.pyplot as plt, pandas as pd
+
+from numpy.polynomial.legendre import Legendre
+
 from astropy.io import fits
 from astropy import units as u, constants as const
+from astropy.coordinates import SkyCoord
 
 from astrobase.varbase import lcfit
 from astrobase import astrotess as at
@@ -74,16 +78,11 @@ from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt
 from astrobase import lcmath
 from astrobase.services.mast import tic_xmatch
-from astrobase.varbase.transits import get_snr_of_dip
-from astrobase.varbase.transits import estimate_achievable_tmid_precision
+from astrobase.varbase.transits import (
+    get_snr_of_dip, estimate_achievable_tmid_precision, get_transit_times
+)
 from astrobase.plotbase import plot_phased_magseries
 
-from astrobase.varbase.transits import get_transit_times
-
-from numpy.polynomial.legendre import Legendre
-
-from astropy import units as u
-from astropy.coordinates import SkyCoord
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -352,7 +351,17 @@ def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
     norbits, groups = lcmath.find_lc_timegroups(step1_time, mingap=orbitgap)
 
     if norbits != expected_norbits:
-        raise AssertionError
+        raise_error = True
+        errmsg = (
+            'expected {} orbits. got {}.'.format(expected_norbits, norbits)
+        )
+        if norbits == 1:
+            # default gap was too wide.
+            norbits, groups = lcmath.find_lc_timegroups(step1_time, mingap=0.3)
+            raise_error = False
+
+        if raise_error:
+            raise AssertionError(errmsg)
 
     masked_times = []
     for group in groups:
@@ -1209,20 +1218,13 @@ def fit_phased_transit_mandelagol_and_line(
     return fit_abyrstar, fit_incl, fit_ulinear, fit_uquad
 
 
-def measure_transit_times_from_lightcurve(ticid,
-                                          n_mcmc_steps,
-                                          n_phase_mcmc_steps,
-                                          getspocparams=False,
-                                          read_literature_params=True,
-                                          overwriteexistingsamples=False,
-                                          mcmcprogressbar=False,
-                                          nworkers=4,
-                                          chain_savdir='/home/luke/local/emcee_chains/',
-                                          lcdir=None,
-                                          n_transit_durations=10,
-                                          verify_times=False,
-                                          inject_spot_crossings=False,
-                                          seed=42):
+def measure_transit_times_from_lightcurve(
+    ticid, n_mcmc_steps, n_phase_mcmc_steps, getspocparams=False,
+    read_literature_params=True, overwriteexistingsamples=False,
+    mcmcprogressbar=False, nworkers=4, chain_savdir=None, lcdir=None,
+    n_transit_durations=10, verify_times=False, inject_spot_crossings=False,
+    seed=42
+    ):
 
     np.random.seed(seed)
 
