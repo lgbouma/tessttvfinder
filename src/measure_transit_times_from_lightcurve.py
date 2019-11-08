@@ -77,7 +77,7 @@ def get_a_over_Rstar_guess(lcfile, period):
     return a_by_Rstar
 
 
-def get_limb_darkening_initial_guesses(lcfile):
+def get_limb_darkening_initial_guesses(lcfile, lit_logg):
     '''
     CITE: Claret 2017, whose coefficients we're parsing
     '''
@@ -96,7 +96,9 @@ def get_limb_darkening_initial_guesses(lcfile):
     if not isinstance(metallicity,float):
         metallicity = 0 # solar
     if not isinstance(logg, float):
-        raise AssertionError('did not get float logg')
+        logg = lit_logg
+        if not isinstance(logg, float):
+            raise AssertionError('did not get float logg')
 
     u_linear, u_quad = get_tess_limb_darkening_guesses(teff, logg)
 
@@ -335,7 +337,7 @@ def fit_transit_mandelagol_only(transit_ix, t_start, t_end, time,
     sel_whitened_flux = whitened_flux[sel]
     sel_err_flux = err_flux[sel]
 
-    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile, lit_logg)
     a_guess = get_a_over_Rstar_guess(lcfile, fitd['period'])
 
     # trapezoidal fit get more robust transit depth than BLS, for some
@@ -544,15 +546,21 @@ def trapezoidal_spot_model(time, t_spot_mid, T_dur_spot=20/(60*24),
 def fit_transit_mandelagol_and_line(
     sectornum,
     transit_ix, t_start, t_end, time, flux, err_flux, lcfile, fitd,
-    trapfit, litparams, ticid, fit_savdir, chain_savdir, nworkers,
+    trapfit, fixparamdf, ticid, fit_savdir, chain_savdir, nworkers,
     n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar,
     getspocparams, timeoffset, fit_ulinear, fit_uquad,
     inject_spot_crossings=False, tdur=None, seed=42):
     # tdur: transit duration
 
-    lit_period, lit_a_by_rstar, lit_incl = litparams
+    lit_period = float(fixparamdf.period_day)
+    lit_a_by_rstar = float(fixparamdf.a_by_rstar)
+    lit_incl = float(fixparamdf.inclination_deg)
+    lit_logg = float(fixparamdf.logg)
+
     bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
-    u_claret_linear, u_claret_quad = get_limb_darkening_initial_guesses(lcfile)
+    u_claret_linear, u_claret_quad = (
+        get_limb_darkening_initial_guesses(lcfile, lit_logg)
+    )
     u_linear, u_quad = fit_ulinear, fit_uquad
     print('claret 2017 u_linear: {}, u_quad: {}'.
           format(u_claret_linear, u_claret_quad))
@@ -632,7 +640,7 @@ def fit_transit_mandelagol_and_line(
     maf_data_errs = lcfit.mandelagol_and_line_fit_magseries(
                     sel_time, sel_flux, sel_err_flux,
                     initfitparams, priorbounds, fixedparams,
-                    trueparams=litparams, magsarefluxes=True,
+                    trueparams=None, magsarefluxes=True,
                     sigclip=None, plotfit=mandelagolfit_savfile,
                     plotcorner=corner_savfile,
                     samplesavpath=samplesavpath, nworkers=nworkers,
@@ -755,15 +763,19 @@ def fit_transit_mandelagol_and_line(
 def fit_phased_transit_mandelagol_and_line(
     sectornum,
     t_starts, t_ends, time, flux, err_flux, lcfile, fitd,
-    trapfit, bls_period, litparams, ticid, fit_savdir, chain_savdir, nworkers,
+    trapfit, bls_period, litdf, ticid, fit_savdir, chain_savdir, nworkers,
     n_mcmc_steps, overwriteexistingsamples, mcmcprogressbar):
 
     # parse initial guesses
-    lit_period, lit_a_by_rstar, lit_incl = litparams
+    lit_period = float(litdf.period_day)
+    lit_a_by_rstar = float(litdf.a_by_rstar)
+    lit_incl = float(litdf.inclination_deg)
+    lit_logg = float(litdf.logg)
+
     bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
     bls_t0 = trapfit['fitinfo']['fitepoch']
     bls_period = bls_period
-    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile)
+    u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile, lit_logg)
 
     b = lit_a_by_rstar * np.cos(lit_incl*u.deg)
     bls_lit_t_dur_day = (
@@ -1187,10 +1199,15 @@ def measure_transit_times_from_lightcurve(
             rstar = pl_row['st_rad']
             a_by_rstar = (semimaj_au / rstar).cgs.value
 
+            mstar = pl_row['st_mass']
+
+            logg = np.log10( ( const.G * mstar / (rstar**2) ).value )
+
             litdf = pd.DataFrame(
                 {'period_day':period,
                  'a_by_rstar':a_by_rstar,
-                 'inclination_deg':incl
+                 'inclination_deg':incl,
+                 'logg':logg
                 }, index=[0]
             )
             # get the fixed physical parameters from the data. period_day,
@@ -1200,10 +1217,6 @@ def measure_transit_times_from_lightcurve(
         else:
             litdf = pd.read_csv(litpath, sep=',')
 
-        # NOTE: only period is used, for now
-        litparams = tuple(map(float,
-            [litdf['period_day'],litdf['a_by_rstar'],litdf['inclination_deg']])
-        )
     else:
         errmsg = 'read_literature_params is required'
         raise AssertionError(errmsg)
@@ -1268,13 +1281,16 @@ def measure_transit_times_from_lightcurve(
         fit_phased_transit_mandelagol_and_line(
             sectornum,
             t_starts, t_ends, time, flux, err_flux, lcfile, fitd, trapfit,
-            bls_period, litparams, ticid, fit_savdir, chain_savdir, nworkers,
+            bls_period, litdf, ticid, fit_savdir, chain_savdir, nworkers,
             n_phase_mcmc_steps, overwriteexistingsamples, mcmcprogressbar)
     )
 
-    litparams = tuple(map(float,
-            [litdf['period_day'],fit_abyrstar,fit_incl])
-    )
+    fixparamdf = pd.DataFrame({
+        'period_day':float(litdf['period_day']),
+        'a_by_rstar':fit_abyrstar,
+        'inclination_deg':fit_incl,
+        'logg':float(litdf['logg'])
+    })
 
     for transit_ix, t_start, t_end in list(
         zip(range(len(t_starts)), t_starts, t_ends)
@@ -1300,7 +1316,7 @@ def measure_transit_times_from_lightcurve(
             fit_transit_mandelagol_and_line(
                 sectornum,
                 transit_ix, t_start, t_end, this_time, flux, err_flux,
-                lcfile, fitd, trapfit, litparams, ticid, fit_savdir,
+                lcfile, fitd, trapfit, fixparamdf, ticid, fit_savdir,
                 chain_savdir, nworkers, n_mcmc_steps, overwriteexistingsamples,
                 mcmcprogressbar, getspocparams, timeoffset, fit_ulinear,
                 fit_uquad, inject_spot_crossings=inject_spot_crossings,
