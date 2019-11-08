@@ -1,60 +1,10 @@
 # -*- coding: utf-8 -*-
 '''
-usage: measure_transit_times_from_lightcurve.py [-h] [--ticid TICID]
-                                                [--n_mcmc_steps N_MCMC_STEPS]
-                                                [--n_phase_mcmc_steps N_PHASE_MCMC_STEPS]
-                                                [--nworkers NWORKERS]
-                                                [--n_transit_durations N_TRANSIT_DURATIONS]
-                                                [--mcmcprogressbar]
-                                                [--no-mcmcprogressbar]
-                                                [--overwritesamples]
-                                                [--no-overwritesamples]
-                                                [--getspocparams]
-                                                [--no-getspocparams]
-                                                [--read_literature_params]
-                                                [--no-read_literature_params]
-                                                [--verify-times]
-                                                [--no-verify-times]
-                                                [--chain_savdir CHAIN_SAVDIR]
-                                                [--lcdir LCDIR]
+usage: python measure_transit_times_from_lightcurve.py --help
 
 Given a lightcurve with transits (e.g., alerted from TESS Science Office),
 measure the times that they fall at by fitting models.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --ticid TICID         integer TIC ID for object. Lightcurve assumed to be at
-                        ../data/tess_lightcurves/tess2018206045859-s0001-{tici
-                        d}-111-s_llc.fits.gz
-  --n_mcmc_steps N_MCMC_STEPS
-                        steps to run in MCMC of individual transits
-  --n_phase_mcmc_steps N_PHASE_MCMC_STEPS
-                        steps to run in MCMC of phased transit
-  --nworkers NWORKERS   how many workers?
-  --n_transit_durations N_TRANSIT_DURATIONS
-                        for transit model fitting, how large a time slice
-                        around the transit do you want to fit?
-                        [N*transit_duration]
-  --mcmcprogressbar
-  --no-mcmcprogressbar
-  --overwritesamples
-  --no-overwritesamples
-  --getspocparams       whether to parse ../data/toi-plus-2018-09-14.csv for
-                        their "true" parameters
-  --no-getspocparams
-  --read_literature_params
-                        whether to parse ../data/TICID/params.csv for
-                        manually-parsed literature params
-  --no-read_literature_params
-  --verify-times        whether to parse ../data/TICID/params.csv for
-                        manually-parsed literature params
-  --no-verify-times
-  --chain_savdir CHAIN_SAVDIR
-                        e.g., /home/foo/bar/
-  --lcdir LCDIR         e.g., /home/foo/lightcurves/
 '''
-from __future__ import division, print_function
-
 import os, argparse, pickle, h5py, json
 from glob import glob
 from parse import search
@@ -82,7 +32,12 @@ from astrobase.varbase.transits import (
     get_snr_of_dip, estimate_achievable_tmid_precision, get_transit_times
 )
 from astrobase.plotbase import plot_phased_magseries
+from astrobase.services.mast import tic_objectsearch
+from astrobase.lcfit.utils import make_fit_plot
 
+from lightkurve.search import search_lightcurvefile
+
+from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -139,19 +94,6 @@ def get_limb_darkening_initial_guesses(lcfile):
     if not isinstance(metallicity,float):
         metallicity = 0 # solar
 
-    ### OLD IMPLEMENTATION THAT MIGHT STRUGGLE B/C OF MULTIPLE OBJECTS:
-    ### ra, dec = lc_hdr['RA_OBJ'], lc_hdr['DEC_OBJ']
-    ### sep = 0.1*u.arcsec
-    ### obj = tic_xmatch(ra, dec, radius_arcsec=sep.to(u.arcsec).value)
-    ### if len(obj['data'])==1:
-    ###     teff = obj['data'][0]['Teff']
-    ###     logg = obj['data'][0]['logg']
-    ###     metallicity = obj['data'][0]['MH'] # often None
-    ###     if not isinstance(metallicity,float):
-    ###         metallicity = 0 # solar
-    ### else:
-    ###     raise NotImplementedError
-
     # get the Claret quadratic priors for TESS bandpass
     # the selected table below is good from Teff = 1500 - 12000K, logg = 2.5 to
     # 6. We choose values computed with the "r method", see
@@ -189,7 +131,6 @@ def get_limb_darkening_initial_guesses(lcfile):
 
 
 def get_alerted_params(ticid):
-    import pandas as pd
     df = pd.read_csv('../data/toi-plus-2018-09-14.csv', delimiter=',')
     ap = df[df['tic_id']==ticid]
     if not len(ap) == 1:
@@ -217,63 +158,6 @@ def get_alerted_params(ticid):
     spoc_b = b.value
 
     return spoc_b, spoc_sma, spoc_t0, spoc_rp
-
-
-def single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid):
-    f, axs = plt.subplots(nrows=2, ncols=1, sharex=True, figsize=(8,6))
-    axs[0].scatter(time, flux, c='k', alpha=0.5, label='PDCSAP', zorder=1,
-                   s=1.5, rasterized=True, linewidths=0)
-    axs[0].plot(time, smooth_flux, 'b-', alpha=0.9, label='median filter',
-                zorder=2)
-    axs[1].scatter(time, whitened_flux, c='k', alpha=0.5,
-                   label='PDCSAP/median filtered',
-                   zorder=1, s=1.5, rasterized=True, linewidths=0)
-
-    for ax in axs:
-        ax.legend(loc='best')
-
-    axs[0].set(ylabel='relative flux')
-    axs[1].set(xlabel='time [days]', ylabel='relative flux')
-    f.tight_layout(h_pad=0, w_pad=0)
-    savdir='../results/lc_analysis/'
-    savname = str(ticid)+'_whitening_PDCSAP_thru_medianfilter.png'
-    f.savefig(savdir+savname, dpi=400, bbox_inches='tight')
-
-
-def get_timeseries_and_median_filter(lcfile, mingap=240/(60*24)):
-    # mingap: 240 minutes, in units of days
-
-    if lcfile.endswith('.fits.gz'):
-        time, flux, err_flux = (
-            at.read_tess_fitslc(lcfile, 'PDCSAP')
-        )
-    else:
-        raise NotImplementedError
-
-    # detrending parameters. mingap: minimum gap to determine time group size.
-    # smooth_window_day: window for median filtering.
-    smooth_window_day = 2.
-    cadence_min = 2
-
-    cadence_day = cadence_min / 60. / 24.
-    windowsize = int(smooth_window_day/cadence_day)
-    if windowsize % 2 == 0:
-        windowsize += 1
-
-    # get time groups, and median filter each one
-    ngroups, groups = lcmath.find_lc_timegroups(time, mingap=mingap)
-
-    tg_smooth_flux = []
-    for group in groups:
-        tg_flux = flux[group]
-        tg_smooth_flux.append(
-            smooth_magseries_ndimage_medfilt(tg_flux, windowsize)
-        )
-
-    smooth_flux = np.concatenate(tg_smooth_flux)
-    whitened_flux = flux/smooth_flux
-
-    return time, flux, err_flux, smooth_flux, whitened_flux
 
 
 def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
@@ -1241,9 +1125,6 @@ def measure_transit_times_from_lightcurve(
     # given TICID, then to get lightcurve given ra/dec.
     #
 
-    from astrobase.services.mast import tic_objectsearch
-    from lightkurve.search import search_lightcurvefile
-
     ticres = tic_objectsearch(ticid)
 
     with open(ticres['cachefname'], 'r') as json_file:
@@ -1307,64 +1188,6 @@ def measure_transit_times_from_lightcurve(
     corner_savfile = os.path.join(fit_savdir, corner_plotname)
     ##########################################
 
-    # # METHOD #1 (outdated)
-    # time, flux, err_flux, smooth_flux, whitened_flux = (
-    #   get_timeseries_and_median_filter(lcfile) 
-    # )
-    # if make_diagnostic_plots:
-    #     single_whitening_plot(time, flux, smooth_flux, whitened_flux, ticid)
-
-    # METHOD #2:
-    time, flux, err_flux, lcd = retrieve_no_whitening(
-        lcfile, sectornum, make_diagnostic_plots=make_diagnostic_plots)
-
-    if verify_times:
-        from verify_time_stamps import manual_verify_time_stamps
-        print('\nWRN! got verify_times special mode.\n')
-        manual_verify_time_stamps(lcfile, lcd)
-        return 1
-
-    # run bls to get initial parameters.
-    endp = 1.05*(np.nanmax(time) - np.nanmin(time))/2
-    blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
-                                      startp=0.1, endp=endp,
-                                      maxtransitduration=0.3, nworkers=8,
-                                      sigclip=None)
-    fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
-                                       blsdict['bestperiod'],
-                                       magsarefluxes=True, sigclip=None,
-                                       perioddeltapercent=5)
-
-    bls_period = fitd['period']
-    #  plot the BLS model.
-    from astrobase.lcfit.utils import make_fit_plot
-    make_fit_plot(fitd['phases'], fitd['phasedmags'], None, fitd['blsmodel'],
-                  fitd['period'], fitd['epoch'], fitd['epoch'], blsfit_savfile,
-                  magsarefluxes=True)
-
-    ingduration_guess = fitd['transitduration']*0.2
-    transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
-                     fitd['transitduration'], ingduration_guess
-                    ]
-
-    # fit a trapezoidal transit model; plot the resulting phased LC.
-    trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
-                                              transitparams,
-                                              magsarefluxes=True, sigclip=None,
-                                              plotfit=trapfit_savfile)
-
-    period = trapfit['fitinfo']['finalparams'][0]
-    t0 = trapfit['fitinfo']['fitepoch']
-    transitduration_phase = trapfit['fitinfo']['finalparams'][3]
-    tdur = period * transitduration_phase
-
-    # isolate each transit to within +/- n_transit_durations
-    tmids, t_starts, t_ends = (
-        get_transit_times(fitd, time, n_transit_durations, trapd=trapfit)
-    )
-
-    rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
-
     if read_literature_params:
 
         litdir = "../data/literature_physicalparams/{:d}/".format(ticid)
@@ -1373,11 +1196,10 @@ def measure_transit_times_from_lightcurve(
         litpath = os.path.join(litdir, 'params.csv')
 
         if not os.path.exists(litpath):
+
+            eatab = NasaExoplanetArchive.get_confirmed_planets_table()
             # attempt to get physical parameters of planet -- period, a/Rstar, and
             # inclination -- for the initial guesses.
-            from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
-            eatab = NasaExoplanetArchive.get_confirmed_planets_table()
-
             pl_coords = eatab['sky_coord']
             tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
 
@@ -1410,7 +1232,59 @@ def measure_transit_times_from_lightcurve(
             [litdf['period_day'],litdf['a_by_rstar'],litdf['inclination_deg']])
         )
     else:
-        raise AssertionError
+        errmsg = 'read_literature_params is required'
+        raise AssertionError(errmsg)
+
+    ##########################################
+
+    time, flux, err_flux, lcd = retrieve_no_whitening(
+        lcfile, sectornum, make_diagnostic_plots=make_diagnostic_plots)
+
+    if verify_times:
+        from verify_time_stamps import manual_verify_time_stamps
+        print('\nWRN! got verify_times special mode.\n')
+        manual_verify_time_stamps(lcfile, lcd)
+        return 1
+
+    # run bls to get initial parameters.
+    endp = 1.05*(np.nanmax(time) - np.nanmin(time))/2
+    blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
+                                      startp=0.1, endp=endp,
+                                      maxtransitduration=0.3, nworkers=8,
+                                      sigclip=None)
+    fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
+                                       blsdict['bestperiod'],
+                                       magsarefluxes=True, sigclip=None,
+                                       perioddeltapercent=5)
+
+    bls_period = fitd['period']
+    #  plot the BLS model.
+    make_fit_plot(fitd['phases'], fitd['phasedmags'], None, fitd['blsmodel'],
+                  fitd['period'], fitd['epoch'], fitd['epoch'], blsfit_savfile,
+                  magsarefluxes=True)
+
+    ingduration_guess = fitd['transitduration']*0.2
+    transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
+                     fitd['transitduration'], ingduration_guess
+                    ]
+
+    # fit a trapezoidal transit model; plot the resulting phased LC.
+    trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
+                                              transitparams,
+                                              magsarefluxes=True, sigclip=None,
+                                              plotfit=trapfit_savfile)
+
+    period = trapfit['fitinfo']['finalparams'][0]
+    t0 = trapfit['fitinfo']['fitepoch']
+    transitduration_phase = trapfit['fitinfo']['finalparams'][3]
+    tdur = period * transitduration_phase
+
+    # isolate each transit to within +/- n_transit_durations
+    tmids, t_starts, t_ends = (
+        get_transit_times(fitd, time, n_transit_durations, trapd=trapfit)
+    )
+
+    rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
 
     # fit the phased transit, within N durations of the transit itself, to
     # determine a/Rstar, inclination, and quadratric terms for fixed
@@ -1549,4 +1423,5 @@ if __name__ == '__main__':
         read_literature_params=args.rlp,
         verify_times=args.verifytimes,
         inject_spot_crossings=args.injectspots,
-        seed=args.seed)
+        seed=args.seed
+    )
