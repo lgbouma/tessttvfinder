@@ -5,6 +5,10 @@ usage: python measure_transit_times_from_lightcurve.py --help
 Given a lightcurve with transits (e.g., alerted from TESS Science Office),
 measure the times that they fall at by fitting models.
 '''
+
+###########
+# imports #
+###########
 import os, argparse, pickle, h5py, json
 from glob import glob
 from parse import search
@@ -39,6 +43,17 @@ from astrobase.lcfit.utils import make_fit_plot
 from lightkurve.search import search_lightcurvefile
 
 from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
+
+##########
+# config #
+##########
+many_gaps_expected = [
+    16740101 # KELT-16. cam1,ccd1 in sectors 14+15
+]
+
+half_epoch_off = [
+    16740101 # astrobase's single bls "refinement" gets secondary
+]
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -219,7 +234,13 @@ def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
             norbits, groups = lcmath.find_lc_timegroups(step1_time, mingap=0.3)
             raise_error = False
 
+        ticid = np.int64(search('{}/tic_{}/{}',lcfile)[1])
+        if ticid in many_gaps_expected:
+            raise_error = False
+
         if raise_error:
+            plt.scatter(step1_time, step1_flux)
+            plt.savefig('temp_{}.png'.format(ticid))
             raise AssertionError(errmsg)
 
     masked_times = []
@@ -942,202 +963,210 @@ def measure_transit_times_from_lightcurve(
     res = search_lightcurvefile(targetcoordstr, radius=0.1,
                                 cadence='short', mission='TESS')
 
-    if len(res.table)!=1:
+    if len(res.table)==0:
         errmsg = (
-            'expected single sector of SC data. got {}. need smarter logic'.
+            'failed to get any SC data. got {} rows. need other LC source.'.
             format(len(res.table))
         )
         raise AssertionError(errmsg)
 
-    # parse sector number from the obs_id, in format:
-    # tess2019006130736-s0007-0000000022529346-0131-s
-    sectornum = int(
-        search('tess{}-s{}-{}', res.table['obs_id'][0])[1].lstrip('0')
-    )
+    available_sectors = list(res.table['sequence_number'])
 
-    download_dir = lcdir
+    res.download_all(download_dir=lcdir)
 
-    res.download_all(download_dir=download_dir)
+    # For each sector, fit available data with its own phase-fold. Then fit for
+    # the individual transit times.  (This is a bit wrong for the joint
+    # phase-fold, but unless you're aiming for transit times and not
+    # phase-curve science this shouldn't be an issue).
+    for sectornum in available_sectors:
 
-    lcfiles = glob(os.path.join(lcdir, 'mastDownload', 'TESS', 'tess*',
-                                'tess*_lc.fits'))
-    if len(lcfiles) != 1:
-        raise AssertionError('expected single sector of SC data. need '
-                             'smarter logic')
+        lcfiles = glob(os.path.join(
+            lcdir, 'mastDownload', 'TESS', 'tess*',
+            'tess*-s{}-*_lc.fits'.format(str(sectornum).zfill(4))))
 
-    lcfile = lcfiles[0]
-
-    fit_savdir = '../results/lc_analysis/'+str(ticid)
-    if inject_spot_crossings:
-        fit_savdir += '_inject_spot_crossings_seed{}'.format(seed)
-    if not os.path.exists(fit_savdir):
-        os.mkdir(fit_savdir)
-    fit_savdir = fit_savdir+'/'+'sector_'+str(sectornum)
-    if not os.path.exists(fit_savdir):
-        os.mkdir(fit_savdir)
-    chain_savdir = chain_savdir+'sector_'+str(sectornum)
-    if inject_spot_crossings:
-        chain_savdir += '_inject_spot_crossings_seed{}'.format(seed)
-    if not os.path.exists(chain_savdir):
-        os.mkdir(chain_savdir)
-    blsfit_plotname = str(ticid)+'_bls_fit.png'
-    trapfit_plotname = str(ticid)+'_trapezoid_fit.png'
-    mandelagolfit_plotname = str(ticid)+'_mandelagol_fit_4d.png'
-    corner_plotname = str(ticid)+'_corner_mandelagol_fit_4d.png'
-    sample_plotname = str(ticid)+'_mandelagol_fit_samples_4d.h5'
-
-    blsfit_savfile = os.path.join(fit_savdir, blsfit_plotname)
-    trapfit_savfile = os.path.join(fit_savdir, trapfit_plotname)
-    mandelagolfit_savfile = os.path.join(fit_savdir, mandelagolfit_plotname)
-    corner_savfile = os.path.join(fit_savdir, corner_plotname)
-    ##########################################
-
-    if read_literature_params:
-
-        litdir = "../data/literature_physicalparams/{:d}/".format(ticid)
-        if not os.path.exists(litdir):
-            os.mkdir(litdir)
-        litpath = os.path.join(litdir, 'params.csv')
-
-        if not os.path.exists(litpath):
-
-            eatab = NasaExoplanetArchive.get_confirmed_planets_table()
-            # attempt to get physical parameters of planet -- period, a/Rstar, and
-            # inclination -- for the initial guesses.
-            pl_coords = eatab['sky_coord']
-            tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
-
-            print('got match w/ separation {}'.format(
-                np.min(tcoord.separation(pl_coords).to(u.arcsec))))
-            pl_row = eatab[np.argmin(tcoord.separation(pl_coords).to(u.arcsec))]
-
-            # all dimensionful
-            period = pl_row['pl_orbper'].value
-            incl = pl_row['pl_orbincl'].value
-            semimaj_au = pl_row['pl_orbsmax']
-            rstar = pl_row['st_rad']
-            a_by_rstar = (semimaj_au / rstar).cgs.value
-
-            mstar = pl_row['st_mass']
-
-            logg = np.log10( ( const.G * mstar / (rstar**2) ).value )
-
-            litdf = pd.DataFrame(
-                {'period_day':period,
-                 'a_by_rstar':a_by_rstar,
-                 'inclination_deg':incl,
-                 'logg':logg
-                }, index=[0]
+        if len(lcfiles) != 1:
+            import IPython; IPython.embed()
+            raise AssertionError(
+                'expected to operate on one sector of SC data.'
             )
-            # get the fixed physical parameters from the data. period_day,
-            # a_by_rstar, and inclination_deg are comma-separated in this file.
-            litdf.to_csv(litpath, index=False, header=True, sep=',')
-            litdf = pd.read_csv(litpath, sep=',')
+
+        lcfile = lcfiles[0]
+
+        fit_savdir = os.path.join('../results/lc_analysis',str(ticid))
+        if inject_spot_crossings:
+            fit_savdir += '_inject_spot_crossings_seed{}'.format(seed)
+        if not os.path.exists(fit_savdir):
+            os.mkdir(fit_savdir)
+        fit_savdir = fit_savdir+'/'+'sector_'+str(sectornum)
+        if not os.path.exists(fit_savdir):
+            os.mkdir(fit_savdir)
+        chain_savdir = chain_savdir+'sector_'+str(sectornum)
+        if inject_spot_crossings:
+            chain_savdir += '_inject_spot_crossings_seed{}'.format(seed)
+        if not os.path.exists(chain_savdir):
+            os.mkdir(chain_savdir)
+        blsfit_plotname = str(ticid)+'_bls_fit.png'
+        trapfit_plotname = str(ticid)+'_trapezoid_fit.png'
+        mandelagolfit_plotname = str(ticid)+'_mandelagol_fit_4d.png'
+        corner_plotname = str(ticid)+'_corner_mandelagol_fit_4d.png'
+        sample_plotname = str(ticid)+'_mandelagol_fit_samples_4d.h5'
+
+        blsfit_savfile = os.path.join(fit_savdir, blsfit_plotname)
+        trapfit_savfile = os.path.join(fit_savdir, trapfit_plotname)
+        mandelagolfit_savfile = os.path.join(fit_savdir, mandelagolfit_plotname)
+        corner_savfile = os.path.join(fit_savdir, corner_plotname)
+        ##########################################
+
+        if read_literature_params:
+
+            litdir = "../data/literature_physicalparams/{:d}/".format(ticid)
+            if not os.path.exists(litdir):
+                os.mkdir(litdir)
+            litpath = os.path.join(litdir, 'params.csv')
+
+            if not os.path.exists(litpath):
+
+                eatab = NasaExoplanetArchive.get_confirmed_planets_table()
+                # attempt to get physical parameters of planet -- period, a/Rstar, and
+                # inclination -- for the initial guesses.
+                pl_coords = eatab['sky_coord']
+                tcoord = SkyCoord(targetcoordstr, frame='icrs', unit=(u.deg, u.deg))
+
+                print('got match w/ separation {}'.format(
+                    np.min(tcoord.separation(pl_coords).to(u.arcsec))))
+                pl_row = eatab[np.argmin(tcoord.separation(pl_coords).to(u.arcsec))]
+
+                # all dimensionful
+                period = pl_row['pl_orbper'].value
+                incl = pl_row['pl_orbincl'].value
+                semimaj_au = pl_row['pl_orbsmax']
+                rstar = pl_row['st_rad']
+                a_by_rstar = (semimaj_au / rstar).cgs.value
+
+                mstar = pl_row['st_mass']
+
+                logg = np.log10( ( const.G * mstar / (rstar**2) ).value )
+
+                litdf = pd.DataFrame(
+                    {'period_day':period,
+                     'a_by_rstar':a_by_rstar,
+                     'inclination_deg':incl,
+                     'logg':logg
+                    }, index=[0]
+                )
+                # get the fixed physical parameters from the data. period_day,
+                # a_by_rstar, and inclination_deg are comma-separated in this file.
+                litdf.to_csv(litpath, index=False, header=True, sep=',')
+                litdf = pd.read_csv(litpath, sep=',')
+            else:
+                litdf = pd.read_csv(litpath, sep=',')
+
         else:
-            litdf = pd.read_csv(litpath, sep=',')
+            errmsg = 'read_literature_params is required'
+            raise AssertionError(errmsg)
 
-    else:
-        errmsg = 'read_literature_params is required'
-        raise AssertionError(errmsg)
+        ##########################################
 
-    ##########################################
+        time, flux, err_flux, lcd = retrieve_no_whitening(
+            lcfile, sectornum, make_diagnostic_plots=make_diagnostic_plots)
 
-    time, flux, err_flux, lcd = retrieve_no_whitening(
-        lcfile, sectornum, make_diagnostic_plots=make_diagnostic_plots)
+        if verify_times:
+            from verify_time_stamps import manual_verify_time_stamps
+            print('\nWRN! got verify_times special mode.\n')
+            manual_verify_time_stamps(lcfile, lcd)
+            return 1
 
-    if verify_times:
-        from verify_time_stamps import manual_verify_time_stamps
-        print('\nWRN! got verify_times special mode.\n')
-        manual_verify_time_stamps(lcfile, lcd)
-        return 1
+        # run bls to get initial parameters.
+        startp = float(litdf.period_day) - 0.5
+        endp = float(litdf.period_day) + 0.5
 
-    # run bls to get initial parameters.
-    startp = float(litdf.period_day) - 0.5
-    endp = float(litdf.period_day) + 0.5
+        blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
+                                          startp=startp, endp=endp,
+                                          maxtransitduration=0.3, nworkers=8,
+                                          sigclip=None)
+        fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
+                                           blsdict['bestperiod'],
+                                           magsarefluxes=True, sigclip=None,
+                                           perioddeltapercent=5)
 
-    blsdict = kbls.bls_parallel_pfind(time, flux, err_flux, magsarefluxes=True,
-                                      startp=startp, endp=endp,
-                                      maxtransitduration=0.3, nworkers=8,
-                                      sigclip=None)
-    fitd = kbls.bls_stats_singleperiod(time, flux, err_flux,
-                                       blsdict['bestperiod'],
-                                       magsarefluxes=True, sigclip=None,
-                                       perioddeltapercent=5)
+        bls_period = fitd['period']
+        #  plot the BLS model.
+        make_fit_plot(fitd['phases'], fitd['phasedmags'], None, fitd['blsmodel'],
+                      fitd['period'], fitd['epoch'], fitd['epoch'], blsfit_savfile,
+                      magsarefluxes=True)
 
-    bls_period = fitd['period']
-    #  plot the BLS model.
-    make_fit_plot(fitd['phases'], fitd['phasedmags'], None, fitd['blsmodel'],
-                  fitd['period'], fitd['epoch'], fitd['epoch'], blsfit_savfile,
-                  magsarefluxes=True)
+        ingduration_guess = fitd['transitduration']*0.2
+        transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
+                         fitd['transitduration'], ingduration_guess]
 
-    ingduration_guess = fitd['transitduration']*0.2
-    transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
-                     fitd['transitduration'], ingduration_guess
-                    ]
+        if np.int64(ticid) in half_epoch_off:
+            transitparams = [fitd['period'], fitd['epoch']+fitd['period']/2,
+                             fitd['transitdepth'], fitd['transitduration'],
+                             ingduration_guess]
 
-    # fit a trapezoidal transit model; plot the resulting phased LC.
-    trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
-                                              transitparams,
-                                              magsarefluxes=True, sigclip=None,
-                                              plotfit=trapfit_savfile)
+        # fit a trapezoidal transit model; plot the resulting phased LC.
+        trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
+                                                  transitparams,
+                                                  magsarefluxes=True, sigclip=None,
+                                                  plotfit=trapfit_savfile)
 
-    period = trapfit['fitinfo']['finalparams'][0]
-    t0 = trapfit['fitinfo']['fitepoch']
-    transitduration_phase = trapfit['fitinfo']['finalparams'][3]
-    tdur = period * transitduration_phase
+        period = trapfit['fitinfo']['finalparams'][0]
+        t0 = trapfit['fitinfo']['fitepoch']
+        transitduration_phase = trapfit['fitinfo']['finalparams'][3]
+        tdur = period * transitduration_phase
 
-    # isolate each transit to within +/- n_transit_durations
-    tmids, t_starts, t_ends = (
-        get_transit_times(fitd, time, n_transit_durations, trapd=trapfit)
-    )
+        # isolate each transit to within +/- n_transit_durations
+        tmids, t_starts, t_ends = (
+            get_transit_times(fitd, time, n_transit_durations, trapd=trapfit)
+        )
 
-    rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
+        rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
 
-    # fit the phased transit, within N durations of the transit itself, to
-    # determine a/Rstar, inclination, and quadratric terms for fixed
-    # parameters. only period from literature.
-    fit_abyrstar, fit_incl, fit_ulinear, fit_uquad = (
-        fit_phased_transit_mandelagol_and_line(
-            sectornum,
-            t_starts, t_ends, time, flux, err_flux, lcfile, fitd, trapfit,
-            bls_period, litdf, ticid, fit_savdir, chain_savdir, nworkers,
-            n_phase_mcmc_steps, overwriteexistingsamples, mcmcprogressbar)
-    )
-
-    fixparamdf = pd.DataFrame({
-        'period_day':float(litdf['period_day']),
-        'a_by_rstar':fit_abyrstar,
-        'inclination_deg':fit_incl,
-        'logg':float(litdf['logg'])
-    })
-
-    for transit_ix, t_start, t_end in list(
-        zip(range(len(t_starts)), t_starts, t_ends)
-    ):
-
-        timeoffset = t_start + (t_end - t_start)/2
-        t_start -= timeoffset
-        t_end -= timeoffset
-        this_time = time - timeoffset
-
-        try:
-
-            # Method: fit transit + line, 4 parameters: (midtime, slope,
-            # intercept, rp).
-            fit_transit_mandelagol_and_line(
+        # fit the phased transit, within N durations of the transit itself, to
+        # determine a/Rstar, inclination, and quadratric terms for fixed
+        # parameters. only period from literature.
+        fit_abyrstar, fit_incl, fit_ulinear, fit_uquad = (
+            fit_phased_transit_mandelagol_and_line(
                 sectornum,
-                transit_ix, t_start, t_end, this_time, flux, err_flux,
-                lcfile, fitd, trapfit, fixparamdf, ticid, fit_savdir,
-                chain_savdir, nworkers, n_mcmc_steps, overwriteexistingsamples,
-                mcmcprogressbar, getspocparams, timeoffset, fit_ulinear,
-                fit_uquad, inject_spot_crossings=inject_spot_crossings,
-                tdur=tdur, seed=seed
-            )
+                t_starts, t_ends, time, flux, err_flux, lcfile, fitd, trapfit,
+                bls_period, litdf, ticid, fit_savdir, chain_savdir, nworkers,
+                n_phase_mcmc_steps, overwriteexistingsamples, mcmcprogressbar)
+        )
 
-        except Exception as e:
-            print(e)
-            print('transit {:d} failed, continue'.format(transit_ix))
-            continue
+        fixparamdf = pd.DataFrame({
+            'period_day':float(litdf['period_day']),
+            'a_by_rstar':fit_abyrstar,
+            'inclination_deg':fit_incl,
+            'logg':float(litdf['logg'])
+        }, index=[0])
+
+        for transit_ix, t_start, t_end in list(
+            zip(range(len(t_starts)), t_starts, t_ends)
+        ):
+
+            timeoffset = t_start + (t_end - t_start)/2
+            t_start -= timeoffset
+            t_end -= timeoffset
+            this_time = time - timeoffset
+
+            try:
+
+                # Method: fit transit + line, 4 parameters: (midtime, slope,
+                # intercept, rp).
+                fit_transit_mandelagol_and_line(
+                    sectornum,
+                    transit_ix, t_start, t_end, this_time, flux, err_flux,
+                    lcfile, fitd, trapfit, fixparamdf, ticid, fit_savdir,
+                    chain_savdir, nworkers, n_mcmc_steps, overwriteexistingsamples,
+                    mcmcprogressbar, getspocparams, timeoffset, fit_ulinear,
+                    fit_uquad, inject_spot_crossings=inject_spot_crossings,
+                    tdur=tdur, seed=seed
+                )
+
+            except Exception as e:
+                print(e)
+                print('transit {:d} failed, continue'.format(transit_ix))
+                continue
 
 
 if __name__ == '__main__':
