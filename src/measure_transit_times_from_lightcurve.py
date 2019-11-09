@@ -12,6 +12,7 @@ measure the times that they fall at by fitting models.
 import os, argparse, pickle, h5py, json
 from glob import glob
 from parse import search
+from copy import deepcopy
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -51,9 +52,11 @@ many_gaps_expected = [
     16740101 # KELT-16. cam1,ccd1 in sectors 14+15
 ]
 
-half_epoch_off = [
-    16740101 # astrobase's single bls "refinement" gets secondary
-]
+# dictionary of sectors for which each ticid has astrobase's single bls
+# "refinement" getting the secondary, not primary
+half_epoch_off = {
+    16740101: [14]
+}
 
 def get_a_over_Rstar_guess(lcfile, period):
     # xmatch TIC. get Mstar, and Rstar.
@@ -944,6 +947,7 @@ def measure_transit_times_from_lightcurve(
         raise AssertionError('input directory to find lightcurves')
     if not os.path.exists(lcdir):
         os.mkdir(lcdir)
+    chain_base = deepcopy(chain_savdir)
 
     #
     # query MAST, via astrobase and lightkurve APIs, to first get ra/dec
@@ -997,10 +1001,10 @@ def measure_transit_times_from_lightcurve(
             fit_savdir += '_inject_spot_crossings_seed{}'.format(seed)
         if not os.path.exists(fit_savdir):
             os.mkdir(fit_savdir)
-        fit_savdir = fit_savdir+'/'+'sector_'+str(sectornum)
+        fit_savdir = os.path.join(fit_savdir, 'sector_'+str(sectornum))
         if not os.path.exists(fit_savdir):
             os.mkdir(fit_savdir)
-        chain_savdir = chain_savdir+'sector_'+str(sectornum)
+        chain_savdir = os.path.join(chain_base, 'sector_'+str(sectornum))
         if inject_spot_crossings:
             chain_savdir += '_inject_spot_crossings_seed{}'.format(seed)
         if not os.path.exists(chain_savdir):
@@ -1100,9 +1104,10 @@ def measure_transit_times_from_lightcurve(
                          fitd['transitduration'], ingduration_guess]
 
         if np.int64(ticid) in half_epoch_off:
-            transitparams = [fitd['period'], fitd['epoch']+fitd['period']/2,
-                             fitd['transitdepth'], fitd['transitduration'],
-                             ingduration_guess]
+            if sectornum in half_epoch_off[np.int64(ticid)]:
+                transitparams = [fitd['period'], fitd['epoch']+fitd['period']/2,
+                                 fitd['transitdepth'], fitd['transitduration'],
+                                 ingduration_guess]
 
         # fit a trapezoidal transit model; plot the resulting phased LC.
         trapfit = lcfit.traptransit_fit_magseries(time, flux, err_flux,
