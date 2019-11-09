@@ -55,7 +55,8 @@ many_gaps_expected = [
 # dictionary of sectors for which each ticid has astrobase's single bls
 # "refinement" getting the secondary, not primary
 half_epoch_off = {
-    16740101: [14]
+    16740101: [14],
+    236445129: [15]
 }
 
 def get_a_over_Rstar_guess(lcfile, period):
@@ -1103,6 +1104,9 @@ def measure_transit_times_from_lightcurve(
         transitparams = [fitd['period'], fitd['epoch'], fitd['transitdepth'],
                          fitd['transitduration'], ingduration_guess]
 
+        # NOTE: this is a hack. better would probably be to use the TLS
+        # guesses, which are more robust, and don't get stuck in the wrong
+        # minimum like half the time.
         if np.int64(ticid) in half_epoch_off:
             if sectornum in half_epoch_off[np.int64(ticid)]:
                 transitparams = [fitd['period'], fitd['epoch']+fitd['period']/2,
