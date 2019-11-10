@@ -657,6 +657,7 @@ def fit_phased_transit_mandelagol_and_line(
     # lightcurve. Note that an order 1 legendre polynomial == a line, so we'll
     # use that implementation.
     out_fluxs, in_fluxs, fit_fluxs, time_list, intra_inds_list = [], [], [], [], []
+    N_intra = 0
     for t_start,t_end in zip(t_starts, t_ends):
         this_window_inds = (time > t_start) & (time < t_end)
         tmid = t_start + (t_end-t_start)/2
@@ -686,6 +687,8 @@ def fit_phased_transit_mandelagol_and_line(
         in_fluxs.append( flux[this_window_inds] )
         intra_inds_list.append( (time[this_window_inds]>transit_start) &
                                 (time[this_window_inds]<transit_end) )
+
+        N_intra += len(time[this_window_inds][this_window_intra])
 
     # make plots to verify that this procedure is working.
     ix = 0
@@ -739,6 +742,13 @@ def fit_phased_transit_mandelagol_and_line(
         fig.savefig(savpath, dpi=300, bbox_inches='tight')
         print('saved {:s}'.format(savpath))
         ix += 1
+
+    if N_intra < 10:
+        errmsg = (
+            'TIC{}: only got {} points in transits. something wrong.'.
+            format(ticid, N_intra)
+        )
+        raise AssertionError(errmsg)
 
     sel_flux = np.concatenate(out_fluxs)
     fit_flux = np.concatenate(fit_fluxs)
