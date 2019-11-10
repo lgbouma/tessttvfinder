@@ -1059,6 +1059,10 @@ def measure_transit_times_from_lightcurve(
                 mstar = pl_row['st_mass']
                 a_by_rstar = (semimaj_au / rstar).cgs.value
 
+                if not 90 > incl > 0:
+                    # exoplanet archive can fail to report inclination
+                    incl = 85
+
                 if a_by_rstar == 0:
                     # exoplanet archive can fail to report semimajor axis
                     P = pl_row['pl_orbper']
@@ -1069,7 +1073,6 @@ def measure_transit_times_from_lightcurve(
                         raise AssertionError(
                             'TIC{} failing to get a/rstar'.format(ticid)
                         )
-
 
                 logg = np.log10( ( const.G * mstar / (rstar**2) ).cgs.value )
 
