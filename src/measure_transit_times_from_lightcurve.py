@@ -49,7 +49,7 @@ from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
 # config #
 ##########
 many_gaps_expected = [
-    16740101 # KELT-16. cam1,ccd1 in sectors 14+15
+    16740101, # KELT-16. cam1,ccd1 in sectors 14+15
     257567854 # WASP-22. sector 4 instrument anomaly.
 ]
 
@@ -244,7 +244,7 @@ def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
             raise_error = False
 
         ticid = np.int64(search('{}/tic_{}/{}',lcfile)[1])
-        if ticid in many_gaps_expected or sector_num in GAPPY_SECTORS:
+        if ticid in many_gaps_expected or sectornum in GAPPY_SECTORS:
             raise_error = False
 
         if raise_error:
