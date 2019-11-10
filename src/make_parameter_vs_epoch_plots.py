@@ -697,15 +697,55 @@ if __name__ == '__main__':
     ylim, xlim = None, None
     req_precision_minutes = 5
 
-    # KELT-16b, TESS times only
-    plname = 'KELT-16b'
+    # Kepler-13b, TESS times only
+    plname = 'KOI-13b'
     manualtimecsv = None
-    tesstimecsv = '236445129_measured_TESS_times_17_transits.csv'
-    savname = 'KELT-16b_TESS_times_O-C_vs_epoch_badtransitsremoved.png'
+    tesstimecsv = '1717079071_measured_TESS_times_31_transits.csv'
+    savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
     ylim = [-2,2]
-    xlim = [-40,40]
+    xlim = [-20,20]
     req_precision_minutes = 5
     correcterrorbars = False
+
+    # # WASP-22b, TESS times only
+    # plname = 'WASP-22b'
+    # manualtimecsv = None
+    # tesstimecsv = '257567854_measured_TESS_times_7_transits.csv'
+    # savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-2,2]
+    # xlim = [-10,10]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # HAT-P-7b, TESS times only
+    # plname = 'HAT-P-7b'
+    # manualtimecsv = None
+    # tesstimecsv = '424865156_measured_TESS_times_9_transits.csv'
+    # savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-2,2]
+    # xlim = [-10,10]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # WASP-53b, TESS times only
+    # plname = 'WASP-53b'
+    # manualtimecsv = None
+    # tesstimecsv = '268766053_measured_TESS_times_6_transits.csv'
+    # savname = 'WASP-53b_TESS_times_O-C_vs_epoch_badtransitsremoved.png'
+    # ylim = [-2,2]
+    # xlim = [-10,10]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # KELT-16b, TESS times only
+    # plname = 'KELT-16b'
+    # manualtimecsv = None
+    # tesstimecsv = '236445129_measured_TESS_times_17_transits.csv'
+    # savname = 'KELT-16b_TESS_times_O-C_vs_epoch_badtransitsremoved.png'
+    # ylim = [-2,2]
+    # xlim = [-40,40]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
 
     # # KELT-9b, TESS times only
     # plname = 'KELT-9b'
