@@ -1056,9 +1056,20 @@ def measure_transit_times_from_lightcurve(
                 incl = pl_row['pl_orbincl'].value
                 semimaj_au = pl_row['pl_orbsmax']
                 rstar = pl_row['st_rad']
+                mstar = pl_row['st_mass']
                 a_by_rstar = (semimaj_au / rstar).cgs.value
 
-                mstar = pl_row['st_mass']
+                if a_by_rstar == 0:
+                    # exoplanet archive can fail to report semimajor axis
+                    P = pl_row['pl_orbper']
+                    a = ( P**2 * const.G*mstar / (4*np.pi**2) )**(1/3)
+                    a_by_rstar = (a.cgs/rstar.cgs).value
+
+                    if not a_by_rstar > 0 :
+                        raise AssertionError(
+                            'TIC{} failing to get a/rstar'.format(ticid)
+                        )
+
 
                 logg = np.log10( ( const.G * mstar / (rstar**2) ).cgs.value )
 
