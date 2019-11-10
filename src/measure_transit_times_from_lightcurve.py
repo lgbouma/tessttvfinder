@@ -50,6 +50,11 @@ from astroquery.nasa_exoplanet_archive import NasaExoplanetArchive
 ##########
 many_gaps_expected = [
     16740101 # KELT-16. cam1,ccd1 in sectors 14+15
+    257567854 # WASP-22. sector 4 instrument anomaly.
+]
+
+GAPPY_SECTORS = [
+    4,8
 ]
 
 # dictionary of sectors for which each ticid has astrobase's single bls
@@ -239,7 +244,7 @@ def retrieve_no_whitening(lcfile, sectornum, make_diagnostic_plots=True,
             raise_error = False
 
         ticid = np.int64(search('{}/tic_{}/{}',lcfile)[1])
-        if ticid in many_gaps_expected:
+        if ticid in many_gaps_expected or sector_num in GAPPY_SECTORS:
             raise_error = False
 
         if raise_error:
@@ -616,6 +621,11 @@ def fit_phased_transit_mandelagol_and_line(
     lit_incl = float(litdf.inclination_deg)
     lit_logg = float(litdf.logg)
 
+    assert lit_period > 0
+    assert lit_a_by_rstar > 0
+    assert 90 > lit_incl > 0
+    assert lit_logg > 0
+
     bls_rp = np.sqrt(trapfit['fitinfo']['finalparams'][2])
     bls_t0 = trapfit['fitinfo']['fitepoch']
     bls_period = bls_period
@@ -970,8 +980,8 @@ def measure_transit_times_from_lightcurve(
 
     if len(res.table)==0:
         errmsg = (
-            'failed to get any SC data. got {} rows. need other LC source.'.
-            format(len(res.table))
+            'failed to get any SC data for TIC{}. need other LC source.'.
+            format(ticid)
         )
         raise AssertionError(errmsg)
 
@@ -1050,7 +1060,7 @@ def measure_transit_times_from_lightcurve(
 
                 mstar = pl_row['st_mass']
 
-                logg = np.log10( ( const.G * mstar / (rstar**2) ).value )
+                logg = np.log10( ( const.G * mstar / (rstar**2) ).cgs.value )
 
                 litdf = pd.DataFrame(
                     {'period_day':period,
