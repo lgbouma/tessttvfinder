@@ -12,10 +12,10 @@ n_phase_mcmc=1000 #  at 1000, 15 minutes per phase transit. (30 total),
 n_workers=16 # number of workers on ast!
 n_transit_durations=2
 
-# WASP-100 = 38846515
+# WASP-100 = 38846515: done
 # WASP-62 = 149603524
 
-ticids=( 38846515 149603524 )
+ticids=( 149603524 )
 
 for ticid in "${ticids[@]}"
 do

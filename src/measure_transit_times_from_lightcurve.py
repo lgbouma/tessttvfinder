@@ -677,6 +677,17 @@ def fit_phased_transit_mandelagol_and_line(
 
         if len(this_oot_flux) == len(this_oot_time) == 0:
             continue
+        elif len(this_oot_flux) == len(this_oot_time) == 1:
+            # if you have a single point in window, don't fit, just append and
+            # continue. (otherwise will break select from time indices above)
+            time_list.append( time[this_window_inds] )
+            out_fluxs.append( flux[this_window_inds] )
+            fit_fluxs.append( flux[this_window_inds] )
+            in_fluxs.append( flux[this_window_inds] )
+            intra_inds_list.append( (time[this_window_inds]>transit_start) &
+                                    (time[this_window_inds]<transit_end) )
+            continue
+
         p = Legendre.fit(this_oot_time, this_oot_flux, 1)
         coeffs = p.coef
         this_window_fit_flux = p(time[this_window_inds])
