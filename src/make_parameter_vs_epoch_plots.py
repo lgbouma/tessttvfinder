@@ -697,15 +697,26 @@ if __name__ == '__main__':
     ylim, xlim = None, None
     req_precision_minutes = 5
 
-    # Kepler-13b, TESS times only
-    plname = 'KOI-13b'
+
+    # WASP-100b, TESS only
+    plname = 'WASP-100b'
     manualtimecsv = None
-    tesstimecsv = '1717079071_measured_TESS_times_31_transits.csv'
+    tesstimecsv = '38846515_measured_TESS_times_110_transits.csv'
     savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
-    ylim = [-2,2]
-    xlim = [-20,20]
+    ylim = [-3,3]
+    xlim = [-60,60]
     req_precision_minutes = 5
     correcterrorbars = False
+
+    # # Kepler-13b, TESS times only
+    # plname = 'KOI-13b'
+    # manualtimecsv = None
+    # tesstimecsv = '1717079071_measured_TESS_times_31_transits.csv'
+    # savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-2,2]
+    # xlim = [-20,20]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
 
     # # WASP-22b, TESS times only
     # plname = 'WASP-22b'
