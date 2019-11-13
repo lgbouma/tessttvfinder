@@ -10,7 +10,7 @@ from astrobase.services.convert_identifiers import simbad2tic
 
 # Lots of TESS data for these, or of historic interest
 # 'OGLE2-TR-L9', 'OGLE-TR-211'
-simbadnames = ['WASP-100', 'WASP-62']
+simbadnames = ['WASP-100', 'WASP-62', 'WASP-126']
 
 ticids = []
 for simbadname in simbadnames:

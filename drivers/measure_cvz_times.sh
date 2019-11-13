@@ -13,9 +13,10 @@ n_workers=16 # number of workers on ast!
 n_transit_durations=2
 
 # WASP-100 = 38846515: done
-# WASP-62 = 149603524
+# WASP-62 = 149603524: done
+# WASP-126 = 25155310: working
 
-ticids=( 149603524 )
+ticids=( 25155310 )
 
 for ticid in "${ticids[@]}"
 do
