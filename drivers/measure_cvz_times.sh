@@ -14,9 +14,13 @@ n_transit_durations=2
 
 # WASP-100 = 38846515: done
 # WASP-62 = 149603524: done
-# WASP-126 = 25155310: working
+# WASP-126 = 25155310: done
+# K2-182 = 366631954: failed, no SC data available
+# K2-180 = 366411016: failed, no SC data available
+# KELT-15 = 268644785: done
+# WASP-119 = 388104525: done
 
-ticids=( 25155310 )
+ticids=( 366631954 366411016 268644785 388104525 )
 
 for ticid in "${ticids[@]}"
 do

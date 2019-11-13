@@ -9,8 +9,12 @@ from astrobase.services.convert_identifiers import simbad2tic
 #                'HAT-P-32', 'WASP-10', 'WASP-22', 'XO-2', 'Kepler-1']
 
 # Lots of TESS data for these, or of historic interest
-# 'OGLE2-TR-L9', 'OGLE-TR-211'
-simbadnames = ['WASP-100', 'WASP-62', 'WASP-126']
+# #'OGLE2-TR-L9', 'OGLE-TR-211': failed!
+# simbadnames = ['WASP-100', 'WASP-62', 'WASP-126']
+
+# >2 sectors of data, or of other interest
+#FIXME: TODO RUN THESE WHEN SIMBAD QUERIES WORK ...
+simbadnames = ['K2-182', 'K2-180', 'KELT-15', 'WASP-119']
 
 ticids = []
 for simbadname in simbadnames:
