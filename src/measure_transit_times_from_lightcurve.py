@@ -632,6 +632,14 @@ def fit_phased_transit_mandelagol_and_line(
     u_linear, u_quad = get_limb_darkening_initial_guesses(lcfile, lit_logg)
 
     b = lit_a_by_rstar * np.cos(lit_incl*u.deg)
+    if not 0 > b > 1:
+        b = np.pi/4
+        wrnmsg = (
+            'WRN! TIC{}: Artificially setting b=pi/4'.
+            format(ticid)
+        )
+        print(wrnmsg)
+
     bls_lit_t_dur_day = (
         (lit_period*u.day)/np.pi * np.arcsin(
             1/lit_a_by_rstar * np.sqrt(
@@ -639,6 +647,13 @@ def fit_phased_transit_mandelagol_and_line(
             ) / np.sin((lit_incl*u.deg))
         )
     ).to(u.day*u.rad).value
+
+    if pd.isnull(bls_lit_t_dur_day):
+        errmsg = (
+            'TIC{}: got nan bls_lit_t_dur_day. setting b='.
+            format(ticid)
+        )
+        raise AssertionError(errmsg)
 
     # fit only +/- n_transit_durations near the transit data. don't try to fit
     # OOT or occultation data.
