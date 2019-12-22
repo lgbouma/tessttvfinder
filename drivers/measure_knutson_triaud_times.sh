@@ -31,8 +31,17 @@ n_transit_durations=2
 # XO-2 = 356473034 : no SC data
 # Kepler-1 = TrES-2 = 399860444 : no SC data. wtf why?
 
+# 20191222, knutson significant gammmadot HJs
+# HAT-P-29 b  =  250707118  : no SC data, but there should be!!
+# HAT-P-32 b  =  292152376  : no SC data, but there should be!!
+# HAT-P-10 b  =   85593751  : no SC data, but there should be!!
+# HAT-P-11 b  = 28230919  probably stellar activity? worth checking
+
 # ticids=( 268766053 399402994 39903405 138294130 424865156 85593751 28230919 20096620 252479260 250707118 292152376 431701493 257567854 356473034 1717079071 )
-ticids=( 399860444 ) #28230919 )
+# ticids=( 399860444 28230919 )
+
+ticids=( 28230919 )
+# ticids=( 250707118 292152376 85593751 )
 
 for ticid in "${ticids[@]}"
 do

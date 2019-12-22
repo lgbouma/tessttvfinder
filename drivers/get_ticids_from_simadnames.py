@@ -1,4 +1,4 @@
-from astrobase.services.convert_identifiers import simbad2tic
+from astrobase.services.identifiers import simbad_to_tic
 
 # Shai's HJs v0.1
 # simbadnames = ['KELT-16', 'HATS-70', 'Kepler-91', 'KELT-9', 'OGLE-TR-56']
@@ -12,13 +12,19 @@ from astrobase.services.convert_identifiers import simbad2tic
 # #'OGLE2-TR-L9', 'OGLE-TR-211': failed!
 # simbadnames = ['WASP-100', 'WASP-62', 'WASP-126']
 
-# >2 sectors of data, or of other interest
+
 #FIXME: TODO RUN THESE WHEN SIMBAD QUERIES WORK ...
-simbadnames = ['K2-182', 'K2-180', 'KELT-15', 'WASP-119']
+# >2 sectors of data, or of other interest
+# simbadnames = ['K2-182', 'K2-180', 'KELT-15', 'WASP-119']
+# simbadnames = ['Kepler-1658', 'WASP-19', 'HAT-P-7']
+
+simbadnames = [
+    'Kepler-1658', 'WASP-19', 'HAT-P-7'
+]
 
 ticids = []
 for simbadname in simbadnames:
-    ticids.append(simbad2tic(simbadname))
+    ticids.append(simbad_to_tic(simbadname))
 
 for simbadname, ticid in zip(simbadnames, ticids):
     print('{} = {}'.format(simbadname, ticid))

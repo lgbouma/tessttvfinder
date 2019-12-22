@@ -463,7 +463,7 @@ def scatter_plot_parameter_vs_epoch_manual(
     for _dq in np.linspace(np.nanmin(dq), np.nanmax(dq), num=6):
         ax.scatter([],[], c='r', s=1/(_dq**2), label='{:.2E}'.format(_dq))
     ax.legend(scatterpoints=1, frameon=True, labelspacing=0,
-              title='err t0 [minutes]', loc='upper right', fontsize='xx-small')
+              title='err t0 [minutes]', loc='best', fontsize='xx-small')
 
     f.tight_layout()
     f.savefig(savname, bbox_inches='tight')
@@ -699,13 +699,103 @@ if __name__ == '__main__':
 
     # KELT-15b, TESS only
     plname = 'KELT-15b'
-    manualtimecsv = None
     tesstimecsv = '268644785_measured_TESS_times_13_transits.csv'
-    savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
-    ylim = [-3,3]
-    xlim = [-60,60]
-    req_precision_minutes = 5
+    req_precision_minutes = 20
     correcterrorbars = False
+    manualtimecsv = '{:s}_manual.csv'.format(plname)
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    ylim = None
+    xlim = None
+
+    # # WASP-119b, TESS only
+    # plname = 'WASP-119b'
+    # tesstimecsv = '388104525_measured_TESS_times_49_transits.csv'
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = None
+    # xlim = None
+
+    # # WASP-100b, TESS only
+    # plname = 'WASP-100b'
+    # tesstimecsv = '38846515_measured_TESS_times_110_transits.csv'
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = None
+    # xlim = None
+
+    # # WASP-62b, TESS only
+    # plname = 'WASP-62b'
+    # tesstimecsv = '149603524_measured_TESS_times_68_transits.csv'
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = None
+    # xlim = None
+
+    # # WASP-126b, TESS only
+    # plname = 'WASP-126b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # tesstimecsv = '25155310_measured_TESS_times_98_transits.csv'
+    # ylim = None
+    # xlim = None
+    # req_precision_minutes = 10
+    # correcterrorbars = False
+
+    # # WASP-22b, TESS times + lit
+    # plname = 'WASP-22b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # tesstimecsv = '257567854_measured_TESS_times_7_transits.csv'
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = None
+    # xlim = None
+    # req_precision_minutes = 999
+    # correcterrorbars = False
+
+    # # KOI-13b = Kepler-13b, TESS times + literature
+    # plname = 'KOI-13b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # tesstimecsv = '1717079071_measured_TESS_times_31_transits.csv'
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-5,5]
+    # xlim = None
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # HAT-P-7b = KOI-2b, TESS times + literature
+    # plname = 'HAT-P-7b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # tesstimecsv = '424865156_measured_TESS_times_9_transits.csv'
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-5,5]
+    # xlim = None
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # WASP-53b, TESS times + literature
+    # plname = 'WASP-53b'
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # tesstimecsv = '268766053_measured_TESS_times_6_transits.csv'
+    # savname = 'WASP-53b_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'
+    # ylim = [-2,2]
+    # xlim = None
+    # req_precision_minutes = 5
+    # correcterrorbars = False
+
+    # # KELT-15b, TESS only
+    # plname = 'KELT-15b'
+    # manualtimecsv = None
+    # tesstimecsv = '268644785_measured_TESS_times_13_transits.csv'
+    # savname = '{}_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = [-3,3]
+    # xlim = [-60,60]
+    # req_precision_minutes = 5
+    # correcterrorbars = False
 
     # # WASP-119b, TESS only
     # plname = 'WASP-119b'
