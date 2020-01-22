@@ -35,12 +35,17 @@ n_transit_durations=2
 # HAT-P-29 b  =  250707118  : no SC data, but there should be!!
 # HAT-P-32 b  =  292152376  : no SC data, but there should be!!
 # HAT-P-10 b  =   85593751  : no SC data, but there should be!!
+#
 # HAT-P-11 b  = 28230919  probably stellar activity? worth checking
+# HAT-P-17 266593143
+# WASP-8 183532609
+# WASP-34 437242640
+
 
 # ticids=( 268766053 399402994 39903405 138294130 424865156 85593751 28230919 20096620 252479260 250707118 292152376 431701493 257567854 356473034 1717079071 )
 # ticids=( 399860444 28230919 )
 
-ticids=( 28230919 )
+ticids=( 28230919 266593143 183532609 437242640 )
 # ticids=( 250707118 292152376 85593751 )
 
 for ticid in "${ticids[@]}"
