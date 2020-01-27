@@ -9,8 +9,8 @@ a precessing, slightly eccentric orbit?
 usage
 -----
 
-$ python model_comparison_linear_quadratic_precession.py | tee
-    ../results/model_comparison/WASP-4b/model_comparison_output.txt
+$ python -u model_comparison_linear_quadratic_precession.py &> ../results/model_comparison/WASP-4b_20200127/model_comparison_output.txt &
+
 """
 
 from __future__ import division, print_function
@@ -19,6 +19,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 import numpy as np, matplotlib.pyplot as plt, pandas as pd
 import seaborn as sns
+import multiprocessing as mp
 
 from numpy import array as nparr
 from scipy import stats, optimize, integrate
@@ -1272,7 +1273,7 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
             .format(plname)
         )
 
-    savdir = '../results/model_comparison/'+plname+'/'
+    savdir = '../results/model_comparison/'+plname+'_20200127/'
     if 'REFEREE' in transitpath:
         savdir = '../results/model_comparison/'+plname+'_OMIT_FOR_REFEREE'+'/'
     if not os.path.exists(savdir):
@@ -1491,13 +1492,13 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
     fit_2d = compute_mcmc(1, data, plparams, theta_linear, plname,
                           data_occ=data_occ,
                           overwriteexistingsamples=overwrite,
-                          sampledir=sampledir, nworkers=16,
+                          sampledir=sampledir, nworkers=mp.cpu_count(),
                           n_mcmc_steps=n_steps, plotdir=savdir)
 
     fit_3d = compute_mcmc(2, data, plparams, theta_quadratic, plname,
                           data_occ=data_occ,
                           overwriteexistingsamples=overwrite,
-                          sampledir=sampledir, nworkers=16,
+                          sampledir=sampledir, nworkers=mp.cpu_count(),
                           n_mcmc_steps=n_steps,
                           eps=[1e-5, 1e-5, 1e-5], plotdir=savdir)
 
@@ -1511,7 +1512,7 @@ def main(plname, n_steps=10, overwrite=0, Mstar=None, Rstar=None, Mplanet=None,
             data, plparams_prec, theta_maxlike_precession, plname,
             data_occ=data_occ,
             n_mcmc_steps=n_steps_prec, sampledir=sampledir,
-            overwriteexistingsamples=overwrite, nworkers=16,
+            overwriteexistingsamples=overwrite, nworkers=mp.cpu_count(),
             verbose=True, eps=[1e-5, 1e-5, 1e-3, 1, 1e-3], plotdir=savdir,
             impose_k2p_physical=impose_k2p_physical)
     else:
@@ -1962,8 +1963,7 @@ if __name__ == "__main__":
     ######################
     # CHANGED MOST OFTEN #
     ######################
-    plname = 'WASP-19b'
-
+    plname = 'WASP-4b'
     overwrite = 1 # NOTE change sometimes
     n_steps = 5000 #5000
     n_steps_prec = 10 # 40000
@@ -1972,17 +1972,16 @@ if __name__ == "__main__":
     ######################
     # CHANGED LESS OFTEN #
     ######################
-    transitpath = None
-    occpath = None
     sampledir='/home/luke/local/emcee_chains/'
     abyRstar_perr, abyRstar_merr = None, None
     a_perr, a_merr, Rp_perr, Rp_merr = None, None, None, None
 
     if plname == 'WASP-4b':
         Mstar, Rstar, Mplanet, Rplanet = 0.864, 0.893, 1.186, 1.321 # USED: my table 1
-        run_precession_model = True
-        transitpath = '../data/WASP-4b_literature_and_TESS_times_O-C_vs_epoch_selected.csv'
-        sampledir='/home/luke/local/emcee_chains/'
+        run_precession_model = False
+        transitpath = '../data/literature_plus_TESS_times/WASP-4b_literature_and_TESS_times_O-C_vs_epoch_20200127_selected.csv'
+        occpath = '../data/literature_plus_TESS_times/blank.csv'
+        sampledir = '/Users/luke/local/emcee_chains/'
         impose_k2p_physical = True # used to impose physical love number prior
         abyRstar_perr, abyRstar_merr = 0.023, 0.052 # table 1.
         a_perr, a_merr = 0.0007, 0.0008 # AU

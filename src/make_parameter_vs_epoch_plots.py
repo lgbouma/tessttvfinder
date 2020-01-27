@@ -697,15 +697,25 @@ if __name__ == '__main__':
     ylim, xlim = None, None
     req_precision_minutes = 5
 
-    # KELT-15b, TESS only
-    plname = 'KELT-15b'
-    tesstimecsv = '268644785_measured_TESS_times_13_transits.csv'
-    req_precision_minutes = 20
-    correcterrorbars = False
+    # WASP-4b
+    plname = 'WASP-4b'
     manualtimecsv = '{:s}_manual.csv'.format(plname)
-    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
-    ylim = None
-    xlim = None
+    occultationtimecsv = None # intentional
+    savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_20200127.png'.format(plname)
+    tesstimecsv = '402026209_measured_TESS_times_20_transits.csv'
+    req_precision_minutes = 2 # get a junky one otherwise!
+    ylim = [-2.5,1.5]
+    correcterrorbars = True
+
+    # # KELT-15b, TESS only
+    # plname = 'KELT-15b'
+    # tesstimecsv = '268644785_measured_TESS_times_13_transits.csv'
+    # req_precision_minutes = 20
+    # correcterrorbars = False
+    # manualtimecsv = '{:s}_manual.csv'.format(plname)
+    # savname = '{:s}_literature_and_TESS_times_O-C_vs_epoch_badtransitsremoved.png'.format(plname)
+    # ylim = None
+    # xlim = None
 
     # # WASP-119b, TESS only
     # plname = 'WASP-119b'
