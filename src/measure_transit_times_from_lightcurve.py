@@ -27,7 +27,7 @@ from astropy.io import fits
 from astropy import units as u, constants as const
 from astropy.coordinates import SkyCoord
 
-from astrobase.varbase import lcfit
+import astrobase.lcfit as lcfit
 from astrobase import astrotess as at
 from astrobase.periodbase import kbls
 from astrobase.varbase.trends import smooth_magseries_ndimage_medfilt

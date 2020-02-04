@@ -19,7 +19,7 @@ from astrobase.services.identifiers import simbad_to_tic
 # simbadnames = ['Kepler-1658', 'WASP-19', 'HAT-P-7']
 
 simbadnames = [
-    'Kepler-1658', 'WASP-19', 'HAT-P-7'
+    'WASP-12'
 ]
 
 ticids = []
