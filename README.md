@@ -1,6 +1,5 @@
-Hot Jupiters spiral into their host stars, but it's not clear whether the tidal
-decay will be observable in years, or centuries.  If we see it with TESS, we'll
-have learned something.
+Long-term TTV finder. Good for finding HJs undergoing tidal orbital decay,
+apsidal precession, and showing the Doppler effect.
 
 relevant resources
 ----------
