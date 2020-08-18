@@ -1,6 +1,0 @@
-'''
-placeholder
-'''
-
-def placeholder():
-    pass
